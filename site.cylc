@@ -1,4 +1,5 @@
 {% set SITE='kaust' %}
 {% set NMEMBERS = 2 %}
-{% set initialCyclePoint = '2010-01-02' %}
-{% set cycle = "P1W" %}
+{% set initialCyclePoint = '2024-09-02' %}
+{% set cycle = "R1" %}
+{% set FCSTDURATION = "P2D" %}

@@ -1,0 +1,110 @@
+#!jinja2
+
+{% set cpuPerNode=192 %}
+{% set nio_groups=4 %}
+{% set nio_tasks_per_group=16 %}
+{% set nproc_x=64 %}
+{% set nproc_y=56 %}
+
+{% set cpuATM = nio_groups * nio_tasks_per_group + nproc_x * nproc_y  %}
+
+{% set projectid = "k10014" %}
+
+[scheduling]
+    [[graph]]
+
+[runtime]
+    [[root]]
+        init-script = """
+            # for wgrib, cdo
+            export PATH="/scratch/athippp/iops/micromamba/envs/ap84SeasRF/bin:$PATH"
+        """
+        platform=shaheen
+        [[[environment]]]
+            WPS_DIR=/scratch/athippp/iops/S2S/WPS
+            WRF_DIR=/scratch/athippp/iops/S2S/WRF
+
+    [[installWrfWps]]
+        platform=shaheen_login
+        pre-script = """
+            module swap PrgEnv-cray PrgEnv-intel/8.4.0
+            module load craype-hugepages4M
+            module load cray-netcdf
+            export NETCDF=$NETCDF_DIR
+        """
+        script="""
+            mkdir -p $WPS_DIR
+            cd $WPS_DIR
+            if [ -e metgrid/metgrid.exe ] && [ -e ungrib/ungrib.exe ]; then
+                echo "Already compiled"
+                exit 0
+            fi
+            git clone --branch release-v4.5 --depth 1 --single-branch  https://github.com/wrf-model/WPS.git .
+            ./configure <<< "40"
+        """
+
+    [[installWRF]]
+        platform=shaheen_login
+        pre-script = """
+            module swap PrgEnv-cray PrgEnv-intel/8.4.0
+            module load craype-hugepages4M
+            module load cray-netcdf
+        """
+        script="""
+            mkdir -p $WRF_DIR
+
+            if [ -e $WRF_DIR/main/real.exe ] && \
+                [ -e $WRF_DIR/main/wrf.exe ] && \
+                [ -e $WPS_DIR/ungrib/ungrib.exe ] && \
+                [ -e $WPS_DIR/metgrid/metgrid.exe ]; then
+                echo "Already compiled"
+                exit 0
+            fi
+
+            rm -rf WRF
+            git clone --branch release-v4.5.2 --depth 1 --single-branch  https://github.com/wrf-model/WRF.git .
+            cd WRF
+            export NETCDF=$NETCDF_DIR
+            export NETCDF_classic=1
+            ./configure <<< "50"
+            sed -i 's/# -DRSL0_ONLY/-DRSL0_ONLY/g' ./configure.wrf
+            sed -i 's/nproc_x .LT. 10/nproc_x .LT. 1/' share/module_check_a_mundo.F
+            sed -i 's/nproc_y .LT. 10/nproc_y .LT. 1/' share/module_check_a_mundo.F
+            ./compile -j 8 em_real
+            cp -r main test $WRF_DIR/
+            cd -
+            
+            rm -rf WPS
+            git clone --branch release-v4.5 --depth 1 --single-branch  https://github.com/wrf-model/WPS.git 
+            cd WPS
+            ./configure <<< "40"
+            ./compile
+            cp -r metgrid ungrib link_grib.csh $WPS_DIR/
+            cd -
+            rm -rf *
+        """
+
+    [[GET_FORCING]]
+        [[[environment]]]
+            input_data=/scratch/masabas/k10021/k1477/masabas/workS2S/ecmwfs2s/A1F${syyyy}${smm}${sdd}/${syyyy}${smm}${sdd}.grb
+    
+    [[METGRID]]
+        [[[environment]]]
+            GEO_EM_FILE=/lustre2/project/k10014/luongtm/frame/geogrid/geo_em.d01.nc.S2S_4km_AG_24_flood
+            run_cmd="srun"
+
+    [[UNGRIB, METGRID, GET_FORCING]]
+        [[[directives]]]
+            --account={{projectid}}
+            --nodes = 1
+            --ntasks = 1
+            --partition=shared
+            --mem=8G
+
+    [[UNGRIB, METGRID]]
+        execution time limit = PT1H
+
+    [[REAL]]
+        execution time limit = PT3H
+        [[[environment]]]
+            run_cmd = "srun -n {{ cpuPerNode }}"

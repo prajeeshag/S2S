@@ -19,6 +19,11 @@ __koimain() {
 
   inv=${input}.inv
 
+  if [[ ! -e $inv ]]; then
+    inv=inventory
+    wgrib -s "$input" >"$inv"
+  fi
+
   if [[ "$member" -eq 0 ]]; then
     search_string="Control forecast 0:"
   else
@@ -32,11 +37,11 @@ __koimain() {
   wgrib -s $tmpfile >inv
 
   # Sort in time for ungrib compatibility
-  grep ":anl:" <inv | wgrib -i $tmpfile -s -grib -o "${tempfile}.0000" >/dev/null
+  grep ":anl:" <inv | wgrib -i $tmpfile -s -grib -o "${tmpfile}.0000" >/dev/null
   for ((k = 1; k <= $((nday * 2)); k++)); do
     j=$((k * 12))
     jj=$(printf "%04d\n" $j)
-    grep ":${j}hr fcst:" <inv | wgrib -i "$tmpfile" -s -grib -o "${tempfile}.${jj}" >/dev/null
+    grep ":${j}hr fcst:" <inv | wgrib -i "$tmpfile" -s -grib -o "${tmpfile}.${jj}" >/dev/null
   done
   cat "${tmpfile}".* >"sorted_${tmpfile}"
   rm inv "${tmpfile}".*

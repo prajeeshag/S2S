@@ -1,5 +1,5 @@
 #!Jinja2
-{% from 'site.cylc' import initialCyclePoint, NMEMBERS, cycle %}
+{% from 'site.cylc' import initialCyclePoint, NMEMBERS, cycle, FCSTDURATION, SITE %}
 
 {% if graph is defined %}
     # For cylc graph set NMEMBERS = 2
@@ -18,18 +18,17 @@
     [[queues]]
         [[[main_queue]]]
             limit = 100  
-            members = SKRIPS
+            members = WRF
 
     [[graph]]
         R1 = """
-            installWPS
-            installWRF
+            installWRF => installWPS
         """
 
         {{cycle}} = """
             get_forcing<mem> => ungrib<mem>
             installWPS[^] => ungrib<mem>
-            ungrib => metgrid<mem>
+            ungrib<mem> => metgrid<mem>
             metgrid<mem> => real<mem>
             installWPS[^] => wrf<mem>
             real<mem> => wrf<mem>
@@ -58,7 +57,6 @@
         [[[environment]]]
             memN=$CYLC_TASK_PARAM_mem
             MEM_SHARE_DIR=${SHARE_DIR}/mem${CYLC_TASK_PARAM_mem}
-            MEM_ARCHIVE_DIR=${ARCHIVE_DIR}/mem${CYLC_TASK_PARAM_mem}
 
     [[GET_FORCING]]
         pre-script = """
@@ -76,7 +74,7 @@
         # input_data= site specific
 
     [[get_forcing<mem>]]
-        inherit = UNGRIB, ENSMEMBER
+        inherit = GET_FORCING, ENSMEMBER
 
 
     [[UNGRIB]]
@@ -96,9 +94,9 @@
             mv FILE* $MEM_SHARE_DIR/metgrid_inputs
             rm -rf *
         """
-    [[[environment]]]
-        ungrib_dir=$WPS_DIR/ungrib
-        link_grib=$WPS_DIR/link_grib.csh
+        [[[environment]]]
+            ungrib_dir=$WPS_DIR/ungrib
+            link_grib=$WPS_DIR/link_grib.csh
 
     [[ungrib<mem>]]
         inherit = UNGRIB, ENSMEMBER
@@ -111,9 +109,10 @@
             #  Use metgrid table from Hari for better SST interpolation
             cp $ETC_DIR/METGRID.TBL.ARW metgrid/METGRID.TBL
             ln -sf $MEM_SHARE_DIR/metgrid_inputs/* .
+            ln_safe $GEO_EM_FILE geo_em.d01.nc
         """
         script = """
-            $metgrid_dir/metgrid.exe
+            $run_cmd $metgrid_dir/metgrid.exe
             grep "Successful completion" metgrid.log
         """
         post-script = """
@@ -123,6 +122,7 @@
         """
         [[[environment]]]
             metgrid_dir=$WPS_DIR/metgrid
+            # GEO_EM_FILE= site specific path
 
     [[metgrid<mem>]]
         inherit = METGRID, ENSMEMBER
@@ -156,24 +156,27 @@
     [[WRF]]
         pre-script = """
             rm -rf *
-            ln -sf $MEM_SHARE_DIR/wrf*_d?? .
             cp -f $em_real_dir/* .
-            ln_safe $FIX_DIR/geo_em.d01.nc .
-            envsuball $PARM_DIR/wrf/*
+            ln -sf $MEM_SHARE_DIR/wrf_input/* .
+            envsub $ETC_DIR/namelist.input namelist.input
         """
 
         script = "$run_cmd $wrf_exe"
 
         post-script = """
-            mv *_d??_????-??-??_* $MEM_SHARE_DIR
+            mkdir -p $MEM_SHARE_DIR/wrf_out
+            mv *_d??_????-??-??_* $MEM_SHARE_DIR/wrf_out
             rm -rf *
         """
         [[[environment]]]
-            atmDt={{ atmDt }}
-            em_real_dir=$SKRIPS_DIR/external/WRF/test/em_real
-            wrf_exe=$SKRIPS_DIR/external/WRF/main/wrf.exe
+            time_step=20
+            em_real_dir=$WRF_DIR/test/em_real
+            wrf_exe=$WRF_DIR/main/wrf.exe
             #run_cmd = site specific run command: e.g. mpirun -n 4
             #cpuATM = site specific
 
-    [[wrfOnly<mem>]]
-        inherit = WRF_ONLY, ENSMEMBER
+    [[wrf<mem>]]
+        inherit = WRF, ENSMEMBER
+
+
+{% include 'include/' ~ SITE ~ '/flow.cylc' %}
