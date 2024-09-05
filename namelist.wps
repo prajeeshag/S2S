@@ -1,0 +1,16 @@
+&share
+ wrf_core = 'ARW',
+ max_dom = 1,
+ start_date = "${syyyy}-${smm}-${sdd}_${shh}:00:00"
+ end_date = "${eyyyy}-${emm}-${edd}_${ehh}:00:00"
+ interval_seconds = 43200, !! 12 hourly inputs
+/
+
+&ungrib
+ out_format = 'WPS',
+ prefix = 'FILE',
+/
+
+&metgrid
+ fg_name = 'FILE'
+/

@@ -1,0 +1,4 @@
+{% set SITE='kaust' %}
+{% set NMEMBERS = 2 %}
+{% set initialCyclePoint = '2010-01-02' %}
+{% set cycle = "P1W" %}

@@ -1,0 +1,179 @@
+#!Jinja2
+{% from 'site.cylc' import initialCyclePoint, NMEMBERS, cycle %}
+
+{% if graph is defined %}
+    # For cylc graph set NMEMBERS = 2
+    {% set NMEMBERS=2 %}
+{% endif %}
+
+[scheduler]
+    install = parm/, fix/
+
+[task parameters]
+    mem = 1..{{ NMEMBERS }}
+
+[scheduling]
+    initial cycle point = {{ initialCyclePoint }}
+    initial cycle point constraints = W-1
+    [[queues]]
+        [[[main_queue]]]
+            limit = 100  
+            members = SKRIPS
+
+    [[graph]]
+        R1 = """
+            installWPS
+            installWRF
+        """
+
+        {{cycle}} = """
+            get_forcing<mem> => ungrib<mem>
+            installWPS[^] => ungrib<mem>
+            ungrib => metgrid<mem>
+            metgrid<mem> => real<mem>
+            installWPS[^] => wrf<mem>
+            real<mem> => wrf<mem>
+        """
+
+[runtime]
+
+    [[root]]
+        [[[environment]]]
+            CYCLE_DIR=${CYLC_WORKFLOW_WORK_DIR}/${CYLC_TASK_CYCLE_POINT}
+            SHARE_DIR=${CYLC_WORKFLOW_SHARE_DIR}/${CYLC_TASK_CYCLE_POINT}
+            ETC_DIR=${CYLC_WORKFLOW_RUN_DIR}/etc
+            FCST_START_TIME=${CYLC_TASK_CYCLE_POINT}
+            FCST_END_TIME=$(isodatetime ${CYLC_TASK_CYCLE_POINT} --offset={{ FCSTDURATION }})
+            syyyy=${FCST_START_TIME:0:4}
+            smm=${FCST_START_TIME:4:2}
+            sdd=${FCST_START_TIME:6:2}
+            shh=${FCST_START_TIME:9:2}
+            eyyyy=${FCST_END_TIME:0:4}
+            emm=${FCST_END_TIME:4:2}
+            edd=${FCST_END_TIME:6:2}
+            ehh=${FCST_END_TIME:9:2}
+
+
+    [[ENSMEMBER]]
+        [[[environment]]]
+            memN=$CYLC_TASK_PARAM_mem
+            MEM_SHARE_DIR=${SHARE_DIR}/mem${CYLC_TASK_PARAM_mem}
+            MEM_ARCHIVE_DIR=${ARCHIVE_DIR}/mem${CYLC_TASK_PARAM_mem}
+
+    [[GET_FORCING]]
+        pre-script = """
+            rm -rf *
+        """
+        script = """
+            get_forcing.sh -i $input_data -m $memN -o ungrib_input.grib 
+        """
+        post-script = """
+            mkdir -p $MEM_SHARE_DIR
+            mv ungrib_input.grib $MEM_SHARE_DIR
+            rm -rf *
+        """
+    [[[environment]]]
+        # input_data= site specific
+
+    [[get_forcing<mem>]]
+        inherit = UNGRIB, ENSMEMBER
+
+
+    [[UNGRIB]]
+        pre-script = """
+            rm -rf *
+            envsub $ETC_DIR/namelist.wps namelist.wps
+            envsub $ETC_DIR/Vtable Vtable
+            ln_safe "$ungrib_dir" .
+            $link_grib $MEM_SHARE_DIR/ungrib_input.grib .
+        """
+        script = """
+            ./ungrib/ungrib.exe
+            grep "Successful completion" ungrib.log
+        """
+        post-script = """
+            mkdir -p $MEM_SHARE_DIR/metgrid_inputs
+            mv FILE* $MEM_SHARE_DIR/metgrid_inputs
+            rm -rf *
+        """
+    [[[environment]]]
+        ungrib_dir=$WPS_DIR/ungrib
+        link_grib=$WPS_DIR/link_grib.csh
+
+    [[ungrib<mem>]]
+        inherit = UNGRIB, ENSMEMBER
+
+    [[METGRID]]
+        pre-script = """
+            rm -rf *
+            envsub $ETC_DIR/namelist.wps namelist.wps
+            mkdir metgrid 
+            #  Use metgrid table from Hari for better SST interpolation
+            cp $ETC_DIR/METGRID.TBL.ARW metgrid/METGRID.TBL
+            ln -sf $MEM_SHARE_DIR/metgrid_inputs/* .
+        """
+        script = """
+            $metgrid_dir/metgrid.exe
+            grep "Successful completion" metgrid.log
+        """
+        post-script = """
+            mkdir -p $MEM_SHARE_DIR/real_inputs
+            mv met_em* $MEM_SHARE_DIR/real_inputs
+            rm -rf *
+        """
+        [[[environment]]]
+            metgrid_dir=$WPS_DIR/metgrid
+
+    [[metgrid<mem>]]
+        inherit = METGRID, ENSMEMBER
+
+    [[REAL]]
+        pre-script = """
+            rm -rf *
+            ln -sf $MEM_SHARE_DIR/real_inputs/* .
+            envsub $ETC_DIR/namelist.input namelist.input
+        """
+
+        script = "$run_cmd $real_exe"
+
+        post-script = """
+            mkdir -p $MEM_SHARE_DIR/wrf_input
+            mv wrf*_d?? $MEM_SHARE_DIR/wrf_input
+            rm -rf *
+        """
+
+        [[[environment]]]
+            nproc_x=-1
+            nproc_y=-1
+            nio_groups=0
+            nio_tasks_per_group=0
+            real_exe=$WRF_DIR/main/real.exe
+            #run_cmd = site specific run command: e.g. mpirun -n 4
+
+    [[real<mem>]]
+        inherit = REAL, ENSMEMBER
+
+    [[WRF]]
+        pre-script = """
+            rm -rf *
+            ln -sf $MEM_SHARE_DIR/wrf*_d?? .
+            cp -f $em_real_dir/* .
+            ln_safe $FIX_DIR/geo_em.d01.nc .
+            envsuball $PARM_DIR/wrf/*
+        """
+
+        script = "$run_cmd $wrf_exe"
+
+        post-script = """
+            mv *_d??_????-??-??_* $MEM_SHARE_DIR
+            rm -rf *
+        """
+        [[[environment]]]
+            atmDt={{ atmDt }}
+            em_real_dir=$SKRIPS_DIR/external/WRF/test/em_real
+            wrf_exe=$SKRIPS_DIR/external/WRF/main/wrf.exe
+            #run_cmd = site specific run command: e.g. mpirun -n 4
+            #cpuATM = site specific
+
+    [[wrfOnly<mem>]]
+        inherit = WRF_ONLY, ENSMEMBER

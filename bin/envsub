@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# Script name: envsub.sh
+
+# Check if input and output files are provided
+if [ $# -ne 2 ]; then
+	echo "Usage: $0 input_template_file output_file"
+	exit 1
+fi
+
+input_file=$1
+output_file=$2
+
+# Define the AWK script for variable substitution
+awk_script='{
+    while (match($0, /\$([a-zA-Z_][a-zA-Z0-9_]*|\{[a-zA-Z_][a-zA-Z0-9_]*\})/)) {
+        var = substr($0, RSTART+1, RLENGTH-1)
+        if (substr(var, 1, 1) == "{") {
+            var = substr(var, 2, length(var)-2)
+        }
+        val = ENVIRON[var]
+        if (val == "") {
+            printf("Error: Variable \"%s\" is empty or not set for file \"%s\".\n", var, FILENAME) > "/dev/stderr"
+            exit 1
+        }
+        $0 = substr($0, 1, RSTART-1) val substr($0, RSTART+RLENGTH)
+    }
+    print
+}'
+
+# Run the AWK script on the input file and redirect output to the desired file
+awk "$awk_script" "$input_file" >"$output_file"
+
