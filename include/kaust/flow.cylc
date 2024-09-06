@@ -16,6 +16,9 @@
 [runtime]
     [[root]]
         init-script = """
+            module swap PrgEnv-cray PrgEnv-intel/8.4.0
+            module load craype-hugepages4M
+            module load cray-netcdf
             # for wgrib, cdo
             export PATH="/scratch/athippp/iops/micromamba/envs/ap84SeasRF/bin:$PATH"
         """
@@ -26,30 +29,6 @@
 
     [[installWrfWps]]
         platform=shaheen_login
-        pre-script = """
-            module swap PrgEnv-cray PrgEnv-intel/8.4.0
-            module load craype-hugepages4M
-            module load cray-netcdf
-            export NETCDF=$NETCDF_DIR
-        """
-        script="""
-            mkdir -p $WPS_DIR
-            cd $WPS_DIR
-            if [ -e metgrid/metgrid.exe ] && [ -e ungrib/ungrib.exe ]; then
-                echo "Already compiled"
-                exit 0
-            fi
-            git clone --branch release-v4.5 --depth 1 --single-branch  https://github.com/wrf-model/WPS.git .
-            ./configure <<< "40"
-        """
-
-    [[installWRF]]
-        platform=shaheen_login
-        pre-script = """
-            module swap PrgEnv-cray PrgEnv-intel/8.4.0
-            module load craype-hugepages4M
-            module load cray-netcdf
-        """
         script="""
             mkdir -p $WRF_DIR
 
@@ -62,7 +41,7 @@
             fi
 
             rm -rf WRF
-            git clone --branch release-v4.5.2 --depth 1 --single-branch  https://github.com/wrf-model/WRF.git .
+            git clone --branch release-v4.5.2 --depth 1 --single-branch  https://github.com/wrf-model/WRF.git 
             cd WRF
             export NETCDF=$NETCDF_DIR
             export NETCDF_classic=1
@@ -71,16 +50,18 @@
             sed -i 's/nproc_x .LT. 10/nproc_x .LT. 1/' share/module_check_a_mundo.F
             sed -i 's/nproc_y .LT. 10/nproc_y .LT. 1/' share/module_check_a_mundo.F
             ./compile -j 8 em_real
-            cp -r main test $WRF_DIR/
             cd -
             
             rm -rf WPS
             git clone --branch release-v4.5 --depth 1 --single-branch  https://github.com/wrf-model/WPS.git 
             cd WPS
-            ./configure <<< "40"
+            ./configure <<< "38"
+            sed -i '/SCC\s*=\s*cc/s/$/ -Wno-implicit-int/' configure.wps
             ./compile
-            cp -r metgrid ungrib link_grib.csh $WPS_DIR/
             cd -
+
+            cp -rL WRF/main WRF/test $WRF_DIR/
+            cp -rL WPS/metgrid WPS/ungrib WPS/link_grib.csh $WPS_DIR/
             rm -rf *
         """
 
@@ -94,6 +75,7 @@
             run_cmd="srun"
 
     [[UNGRIB, METGRID, GET_FORCING]]
+        execution time limit = PT1H
         [[[directives]]]
             --account={{projectid}}
             --nodes = 1
@@ -101,10 +83,27 @@
             --partition=shared
             --mem=8G
 
-    [[UNGRIB, METGRID]]
-        execution time limit = PT1H
-
     [[REAL]]
         execution time limit = PT3H
         [[[environment]]]
-            run_cmd = "srun -n {{ cpuPerNode }}"
+            run_cmd = "time srun -n {{ cpuPerNode }}"
+        [[[directives]]]
+            --account={{projectid}}
+            --nodes = 1
+            --ntasks = {{ cpuPerNode }}
+
+
+    [[WRF]]
+        execution time limit = PT5H
+        [[[directives]]]
+            --account={{projectid}}
+            {% set nodes = (cpuATM + cpuPerNode - 1) // cpuPerNode %}
+            --nodes={{ nodes }}
+            --ntasks={{ cpuATM }}
+        [[[environment]]]
+            FI_CXI_RX_MATCH_MODE=hybrid
+            run_cmd = "time srun -n {{ cpuATM }} --distribution=block:block --hint=nomultithread"
+            nio_groups={{ nio_groups }}
+            nio_tasks_per_group={{ nio_tasks_per_group }}
+            nproc_x={{ nproc_x }}
+            nproc_y={{ nproc_y }}

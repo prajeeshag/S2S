@@ -1,30 +1,11 @@
 &share
  wrf_core = 'ARW',
  max_dom = 1,
-  start_date = "${syyyy}-${smm}-${sdd}_${shh}:00:00"
+ start_date = "${syyyy}-${smm}-${sdd}_${shh}:00:00"
  end_date = "${eyyyy}-${emm}-${edd}_${ehh}:00:00"
  interval_seconds = 43200
  nocolons = .true.
 /
-
-!&geogrid
-! parent_id         =   1,   1,
-! parent_grid_ratio =   1,   3,
-! i_parent_start    =   1,  53,
-! j_parent_start    =   1,  25,
-! e_we              =  768, 220,
-! e_sn              =  672, 214,
-! geog_data_res = 'default','default',
-! dx = 4000,
-! dy = 4000,
-! map_proj = 'lambert',
-! ref_lat   =  22.3,
-! ref_lon   =  46.0,
-! truelat1  =  18.0,
-! truelat2  =  26.0,
-! stand_lon =  46.0,
-! geog_data_path = '/scratch/luongtm/WPS_GEOG/'
-!/
 
 &ungrib
  out_format = 'WPS',
@@ -34,5 +15,4 @@
 &metgrid
  fg_name = 'FILE'
 ! process_only_bdy = 5,
- opt_metgrid_tbl_path = './'
 /

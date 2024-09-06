@@ -1,10 +1,12 @@
 &time_control
 start_year               = ${syyyy}
 start_month              = ${smm}
-start_day                = ${sdd} 
+start_day                = ${sdd}
+start_hour               = ${shh} 
 end_year                 = ${eyyyy} 
 end_month                = ${emm} 
 end_day                  = ${edd} 
+end_hour                 = ${ehh} 
 interval_seconds         = 43200,             ! 12-hourly forcing data
 input_from_file          = .true., 
 history_interval         = 6000000,  ! No-Output 

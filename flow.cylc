@@ -22,15 +22,14 @@
 
     [[graph]]
         R1 = """
-            installWRF => installWPS
+            installWrfWps
         """
 
         {{cycle}} = """
             get_forcing<mem> => ungrib<mem>
-            installWPS[^] => ungrib<mem>
+            installWrfWps[^] => ungrib<mem>
             ungrib<mem> => metgrid<mem>
             metgrid<mem> => real<mem>
-            installWPS[^] => wrf<mem>
             real<mem> => wrf<mem>
         """
 
@@ -127,11 +126,17 @@
     [[metgrid<mem>]]
         inherit = METGRID, ENSMEMBER
 
+    [[NAMELIST_INPUT]]
+        [[[environment]]]
+            time_step=20
+
     [[REAL]]
+        inherit = None, NAMELIST_INPUT
         pre-script = """
             rm -rf *
             ln -sf $MEM_SHARE_DIR/real_inputs/* .
             envsub $ETC_DIR/namelist.input namelist.input
+            envsub $ETC_DIR/iofields.txt iofields.txt 
         """
 
         script = "$run_cmd $real_exe"
@@ -154,11 +159,13 @@
         inherit = REAL, ENSMEMBER
 
     [[WRF]]
+        inherit = None, NAMELIST_INPUT
         pre-script = """
             rm -rf *
             cp -f $em_real_dir/* .
             ln -sf $MEM_SHARE_DIR/wrf_input/* .
             envsub $ETC_DIR/namelist.input namelist.input
+            envsub $ETC_DIR/iofields.txt iofields.txt 
         """
 
         script = "$run_cmd $wrf_exe"
@@ -169,11 +176,9 @@
             rm -rf *
         """
         [[[environment]]]
-            time_step=20
             em_real_dir=$WRF_DIR/test/em_real
             wrf_exe=$WRF_DIR/main/wrf.exe
             #run_cmd = site specific run command: e.g. mpirun -n 4
-            #cpuATM = site specific
 
     [[wrf<mem>]]
         inherit = WRF, ENSMEMBER
