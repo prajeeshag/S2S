@@ -19,7 +19,7 @@
             module swap PrgEnv-cray PrgEnv-intel/8.4.0
             module load craype-hugepages4M
             module load cray-netcdf
-            # for wgrib, cdo
+            # for wgrib, cdo, nco
             export PATH="/scratch/athippp/iops/micromamba/envs/ap84SeasRF/bin:$PATH"
         """
         platform=shaheen
@@ -74,15 +74,6 @@
             GEO_EM_FILE=/lustre2/project/k10014/luongtm/frame/geogrid/geo_em.d01.nc.S2S_4km_AG_24_flood
             run_cmd="srun"
 
-    [[UNGRIB, METGRID, GET_FORCING]]
-        execution time limit = PT1H
-        [[[directives]]]
-            --account={{projectid}}
-            --nodes = 1
-            --ntasks = 1
-            --partition=shared
-            --mem=8G
-
     [[REAL]]
         execution time limit = PT3H
         [[[environment]]]
@@ -107,3 +98,12 @@
             nio_tasks_per_group={{ nio_tasks_per_group }}
             nproc_x={{ nproc_x }}
             nproc_y={{ nproc_y }}
+
+    [[UNGRIB, METGRID, GET_FORCING, MERGE_TIME, WEEKLY_MEAN]]
+        execution time limit = PT1H
+        [[[directives]]]
+            --account={{projectid}}
+            --nodes = 1
+            --ntasks = 1
+            --partition=shared
+            --mem=8G

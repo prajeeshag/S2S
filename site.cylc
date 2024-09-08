@@ -2,4 +2,4 @@
 {% set NMEMBERS = 2 %}
 {% set initialCyclePoint = '2024-09-02' %}
 {% set cycle = "R1" %}
-{% set FCSTDURATION = "P2D" %}
+{% set FCSTDURATION = "P46D" %}

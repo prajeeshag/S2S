@@ -31,6 +31,8 @@
             ungrib<mem> => metgrid<mem>
             metgrid<mem> => real<mem>
             real<mem> => wrf<mem>
+            wrf<mem> => merge_time<mem>
+            merge_time<mem> => weekly_mean<mem>
         """
 
 [runtime]
@@ -183,5 +185,30 @@
     [[wrf<mem>]]
         inherit = WRF, ENSMEMBER
 
+    [[MERGE_TIME]]
+        script = """
+        mkdir -p $output_dir
+        merge_time_split_var.sh -o $output_dir/surface_d01_ $input_dir/surface_d01_* 
+        """
+        [[[environment]]]
+            input_dir=$MEM_SHARE_DIR/wrf_out
+            output_dir=$MEM_SHARE_DIR/merge_time
+    
+    [[merge_time<mem>]]
+        inherit = MERGE_TIME, ENSMEMBER
+
+    [[WEEKLY_MEAN]]
+        script = """
+            mkdir -p $output_dir
+            # Week Start Monday = 1
+            weekly_mean.sh --weekstart 1 $input_dir/*.nc
+            mv *.nc $output_dir
+        """
+        [[[environment]]]
+            input_dir=$MEM_SHARE_DIR/merge_time
+            output_dir=$MEM_SHARE_DIR/weekly_mean
+    
+    [[weekly_mean<mem>]]
+        inherit = WEEKLY_MEAN, ENSMEMBER
 
 {% include 'include/' ~ SITE ~ '/flow.cylc' %}
