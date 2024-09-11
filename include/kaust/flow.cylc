@@ -1,10 +1,17 @@
 #!jinja2
 
 {% set cpuPerNode=192 %}
-{% set nio_groups=4 %}
-{% set nio_tasks_per_group=16 %}
-{% set nproc_x=64 %}
-{% set nproc_y=56 %}
+{% if test %}
+    {% set nio_groups=4 %}
+    {% set nio_tasks_per_group=2 %}
+    {% set nproc_x=10 %}
+    {% set nproc_y=10 %}
+{% else %}
+    {% set nio_groups=4 %}
+    {% set nio_tasks_per_group=16 %}
+    {% set nproc_x=64 %}
+    {% set nproc_y=56 %}
+{% endif %}
 
 {% set cpuATM = nio_groups * nio_tasks_per_group + nproc_x * nproc_y  %}
 
@@ -26,6 +33,11 @@
         [[[environment]]]
             WPS_DIR=/scratch/athippp/iops/S2S/WPS
             WRF_DIR=/scratch/athippp/iops/S2S/WRF
+            {% if test %}
+                GEO_EM_FILE=/scratch/athippp/S2S/fix/geo_em.d01.nc_S2S_test
+            {% else %}
+                GEO_EM_FILE=/scratch/athippp/S2S/fix/geo_em.d01.nc.S2S_4km_AG_24_flood
+            {% endif %}
 
     [[installWrfWps]]
         platform=shaheen_login
@@ -71,13 +83,17 @@
     
     [[METGRID]]
         [[[environment]]]
-            GEO_EM_FILE=/lustre2/project/k10014/luongtm/frame/geogrid/geo_em.d01.nc.S2S_4km_AG_24_flood
             run_cmd="srun"
 
     [[REAL]]
         execution time limit = PT3H
         [[[environment]]]
-            run_cmd = "time srun -n {{ cpuPerNode }}"
+            {% if test %}
+                run_cmd = "time srun -n 100"
+            {% else %}
+                run_cmd = "time srun -n {{ cpuPerNode }}"
+            {% endif %}
+
         [[[directives]]]
             --account={{projectid}}
             --nodes = 1
@@ -93,13 +109,13 @@
             --ntasks={{ cpuATM }}
         [[[environment]]]
             FI_CXI_RX_MATCH_MODE=hybrid
-            run_cmd = "time srun -n {{ cpuATM }} --distribution=block:block --hint=nomultithread"
+            run_cmd = "srun -n {{ cpuATM }} --distribution=block:block --hint=nomultithread"
             nio_groups={{ nio_groups }}
             nio_tasks_per_group={{ nio_tasks_per_group }}
             nproc_x={{ nproc_x }}
             nproc_y={{ nproc_y }}
 
-    [[UNGRIB, METGRID, GET_FORCING, MERGE_TIME, WEEKLY_MEAN]]
+    [[UNGRIB, METGRID, GET_FORCING, MERGE_TIME, WEEKLY_MEAN, ens_median, ens_pctl]]
         execution time limit = PT1H
         [[[directives]]]
             --account={{projectid}}

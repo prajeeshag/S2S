@@ -33,17 +33,17 @@ __koimain() {
       fi
     fi
 
-    cdoInput="$cdoInput -settaxis,$sdate,$stime,$incHour $input" 
+    cdoInput="$cdoInput -settaxis,$sdate,$stime,$incHour $input"
   done
 
   CDO_FILE_SUFFIX=".nc"
 
-  echo cdo -splitvar -mergetime $cdoInput ${obase} 
-  cdo -splitvar -mergetime $cdoInput ${obase} 
+  echo cdo -splitvar -mergetime $cdoInput ${obase}
+  cdo -r -splitvar -mergetime $cdoInput ${obase}
 
   if [ "$remove" -eq 1 ]; then
-    rm -f ${inputs[@]}
-  fi 
+    rm -f "${inputs[@]}"
+  fi
 }
 
 __koirun "$@"

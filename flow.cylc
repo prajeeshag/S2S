@@ -33,12 +33,21 @@
             real<mem> => wrf<mem>
             wrf<mem> => merge_time<mem>
             merge_time<mem> => weekly_mean<mem>
+            weekly_mean<mem> => ens_median
+            merge_time<mem> => ens_pctl
         """
 
 [runtime]
 
     [[root]]
+        [[[mail]]]
+            to = prajeesh.athippattagopinathan@kaust.edu.sa
+        [[[events]]]
+            mail events = failed
         [[[environment]]]
+            WPS_DIR=** site specific **
+            WRF_DIR=** site specific **
+            GEO_EM_FILE=** site specific **
             CYCLE_DIR=${CYLC_WORKFLOW_WORK_DIR}/${CYLC_TASK_CYCLE_POINT}
             SHARE_DIR=${CYLC_WORKFLOW_SHARE_DIR}/${CYLC_TASK_CYCLE_POINT}
             ETC_DIR=${CYLC_WORKFLOW_RUN_DIR}/etc
@@ -72,7 +81,7 @@
             rm -rf *
         """
     [[[environment]]]
-        # input_data= site specific
+        input_data= ** site specific **
 
     [[get_forcing<mem>]]
         inherit = GET_FORCING, ENSMEMBER
@@ -123,7 +132,7 @@
         """
         [[[environment]]]
             metgrid_dir=$WPS_DIR/metgrid
-            # GEO_EM_FILE= site specific path
+            run_cmd = ** site specific **
 
     [[metgrid<mem>]]
         inherit = METGRID, ENSMEMBER
@@ -137,6 +146,8 @@
         pre-script = """
             rm -rf *
             ln -sf $MEM_SHARE_DIR/real_inputs/* .
+            # get the grid info from geo_em_file
+            source grid_info.sh $GEO_EM_FILE
             envsub $ETC_DIR/namelist.input namelist.input
             envsub $ETC_DIR/iofields.txt iofields.txt 
         """
@@ -155,7 +166,7 @@
             nio_groups=0
             nio_tasks_per_group=0
             real_exe=$WRF_DIR/main/real.exe
-            #run_cmd = site specific run command: e.g. mpirun -n 4
+            run_cmd = ** site specific **
 
     [[real<mem>]]
         inherit = REAL, ENSMEMBER
@@ -166,6 +177,9 @@
             rm -rf *
             cp -f $em_real_dir/* .
             ln -sf $MEM_SHARE_DIR/wrf_input/* .
+
+            # source the grid info from wrf_input
+            source grid_info.sh $GEO_EM_FILE
             envsub $ETC_DIR/namelist.input namelist.input
             envsub $ETC_DIR/iofields.txt iofields.txt 
         """
@@ -180,7 +194,7 @@
         [[[environment]]]
             em_real_dir=$WRF_DIR/test/em_real
             wrf_exe=$WRF_DIR/main/wrf.exe
-            #run_cmd = site specific run command: e.g. mpirun -n 4
+            run_cmd = ** site specific ** # run command: e.g. mpirun -n 4
 
     [[wrf<mem>]]
         inherit = WRF, ENSMEMBER
@@ -210,5 +224,56 @@
     
     [[weekly_mean<mem>]]
         inherit = WEEKLY_MEAN, ENSMEMBER
+
+    [[FOR_VIZ]]
+        [[[environment]]]
+            files_to_process=surface_d01_T2.nc surface_d01_U10.nc
+
+
+    [[ens_pctl]]
+        inherit = None, FOR_VIZ
+        script = """
+            rm -rf *
+            mkdir -p $output_dir
+            for file in $files_to_process; do
+
+                k=1                
+                for ofile in ${SHARE_DIR}/mem*/merge_time/$file; do
+                    mkdir -p mem${k}
+                    to_latlongrid.sh -r ${resolution} -o mem${k} $ofile
+                    k=$((k+1))
+                done
+                    
+                for pctl in $percentiles; do
+                    cdo -enspctl,$pctl mem*/$file pctl${pctl}_$file
+                done
+                rm -rf mem*
+
+                python -c 'import pctl_to_zarr; pctl_to_zarr.app()' pctl*_${file} ${file}.zip
+                rm pctl*_${file}
+                mv ${file}.zip $output_dir
+
+            done
+        """
+        [[[meta]]]
+            title = "Ensemble percentiles from time-merged WRF outputs, remaps to Lat-Lon"
+        [[[environment]]]
+            output_dir=$SHARE_DIR/ens_pctl
+            percentiles=0 20 40 50 60 80 100
+            resolution=0.04
+
+    [[ens_median]]
+        inherit = None, FOR_VIZ
+        script = """
+            rm -rf *
+            mkdir -p $output_dir
+            for file in $files_to_process; do
+                cdo -ensmedian ${SHARE_DIR}/mem*/weekly_mean/$file $file
+                to_latlongrid.sh -r 0.04 -o $output_dir $file
+                rm $file
+            done
+        """
+        [[[environment]]]
+            output_dir=$SHARE_DIR/ens_median
 
 {% include 'include/' ~ SITE ~ '/flow.cylc' %}
