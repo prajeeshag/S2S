@@ -77,10 +77,6 @@
             rm -rf *
         """
 
-    [[GET_FORCING]]
-        [[[environment]]]
-            input_data=/scratch/masabas/k10021/k1477/masabas/workS2S/ecmwfs2s/A1F${syyyy}${smm}${sdd}/${syyyy}${smm}${sdd}.grb
-    
     [[METGRID]]
         [[[environment]]]
             run_cmd="srun"

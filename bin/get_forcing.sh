@@ -12,6 +12,7 @@ __koimain() {
   __addarg "-m" "--member" "storevalue" "required" "" "Ensemble member" ""
   __addarg "-o" "--output" "storevalue" "optional" "" "Output grib data" ""
   __addarg "-n" "--nday" "storevalue" "optional" "46" "Forecast length in days" ""
+  __addarg "" "--year" "storevalue" "optional" "" "Forecast year (used to extract reforecast)" ""
 
   __parseargs "$@"
 
@@ -30,8 +31,11 @@ __koimain() {
     search_string="Perturbed forecast $member:"
   fi
 
+  # Extract the year if needed
+  year_search_string="d=${year: -2}"
+
   tmpfile=data.mem${member}
-  grep "$search_string" <"$inv" | wgrib -i "$input" -s -grib -o "$tmpfile" >/dev/null
+  grep "$search_string" <"$inv" | grep "$year_search_string" | wgrib -i "$input" -s -grib -o "$tmpfile" >/dev/null
 
   mkdir -p sorted
   wgrib -s $tmpfile >inv

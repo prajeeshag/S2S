@@ -32,9 +32,11 @@
             metgrid<mem> => real<mem>
             real<mem> => wrf<mem>
             wrf<mem> => merge_time<mem>
-            merge_time<mem> => weekly_mean<mem>
-            weekly_mean<mem> => ens_median
-            merge_time<mem> => ens_pctl
+            {% if REFORECAST %}
+                merge_time<mem> => weekly_mean<mem>
+                weekly_mean<mem> => ens_median
+                merge_time<mem> => ens_pctl
+            {% endif %}
         """
 
 [runtime]
@@ -73,7 +75,7 @@
             rm -rf *
         """
         script = """
-            get_forcing.sh -i $input_data -m $memN -o ungrib_input.grib 
+            get_forcing.sh -i $input_data -m $memN -o ungrib_input.grib --year $syyyy
         """
         post-script = """
             mkdir -p $MEM_SHARE_DIR
@@ -81,7 +83,11 @@
             rm -rf *
         """
     [[[environment]]]
-        input_data= ** site specific **
+        {% if REFORECAST %}
+            input_data={{FORCING_DATA_DIR}}/A1H${syyyy}${smm}${sdd}/${syyyy}${smm}${sdd}.grb
+        {% else %}
+            input_data={{FORCING_DATA_DIR}}/A1F${syyyy}${smm}${sdd}/${syyyy}${smm}${sdd}.grb
+        {% endif %}
 
     [[get_forcing<mem>]]
         inherit = GET_FORCING, ENSMEMBER

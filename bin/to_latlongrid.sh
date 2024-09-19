@@ -44,6 +44,7 @@ __koimain() {
   __addarg "-r" "--resolution" "storevalue" "required" "" "Resolution of the output grid in degrees" ""
   __addarg "-o" "--output_dir" "storevalue" "optional" "./" "Ouput directory" ""
   __addarg "" "--remap_method" "storevalue" "optional" "remapnn" "CDO remap methods, e.g. remapnn" ""
+  __addarg "" "--grid_des" "storevalue" "optional" "Nil" "Input grid definition file" ""
   __addarg "" "inputs" "positionalarray" "required" "" "WRF output file(s), should contain XLAT and XLONG" ""
   __parseargs "$@"
 
@@ -55,9 +56,12 @@ __koimain() {
 
     filename=$(basename "$input")
 
-    # calculate weekly mean
+    setgrid=""
+    if [ "$grid_des" != "Nil" ]; then
+      setgrid="-setgrid,$grid_des"
+    fi
     set -x
-    cdo -${remap_method},griddes.txt ${input} $output_dir/${filename}
+    cdo -${remap_method},griddes.txt $setgrid ${input} $output_dir/${filename}
     set +x
   done
 }
