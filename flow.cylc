@@ -1,5 +1,5 @@
 #!Jinja2
-{% from 'site.cylc' import initialCyclePoint, NMEMBERS, cycle, FCSTDURATION, SITE %}
+{% from 'site.cylc' import initialCyclePoint, NMEMBERS, cycle, FCSTDURATION, SITE, REFORECAST, FORCING_DATA_DIR, FORECAST_DATE, finalCyclePoint %}
 
 {% if graph is defined %}
     # For cylc graph set NMEMBERS = 2
@@ -7,17 +7,18 @@
 {% endif %}
 
 [scheduler]
-    install = parm/, fix/
+    install = fix/
 
 [task parameters]
-    mem = 1..{{ NMEMBERS }}
+    mem = 0..{{ NMEMBERS - 1 }}
 
 [scheduling]
     initial cycle point = {{ initialCyclePoint }}
-    initial cycle point constraints = W-1
+    final cycle point = {{ finalCyclePoint }}
+    runahead limit = P20
     [[queues]]
         [[[main_queue]]]
-            limit = 100  
+            limit = 120  
             members = WRF
 
     [[graph]]
@@ -32,11 +33,10 @@
             metgrid<mem> => real<mem>
             real<mem> => wrf<mem>
             wrf<mem> => merge_time<mem>
-            {% if REFORECAST %}
-                merge_time<mem> => weekly_mean<mem>
-                weekly_mean<mem> => ens_median
-                merge_time<mem> => ens_pctl
-            {% endif %}
+            merge_time<mem> => weekly_mean<mem>
+            weekly_mean<mem> => ens_median
+            merge_time<mem> => ens_pctl
+            merge_time<mem> => clean_up<mem>
         """
 
 [runtime]
@@ -49,20 +49,33 @@
         [[[environment]]]
             WPS_DIR=** site specific **
             WRF_DIR=** site specific **
-            GEO_EM_FILE=** site specific **
             CYCLE_DIR=${CYLC_WORKFLOW_WORK_DIR}/${CYLC_TASK_CYCLE_POINT}
             SHARE_DIR=${CYLC_WORKFLOW_SHARE_DIR}/${CYLC_TASK_CYCLE_POINT}
             ETC_DIR=${CYLC_WORKFLOW_RUN_DIR}/etc
+            FIX_DIR=${CYLC_WORKFLOW_RUN_DIR}/fix
             FCST_START_TIME=${CYLC_TASK_CYCLE_POINT}
             FCST_END_TIME=$(isodatetime ${CYLC_TASK_CYCLE_POINT} --offset={{ FCSTDURATION }})
+
+            FORECAST_DATE={{FORECAST_DATE}}
+            iyyyy=${FORECAST_DATE:0:4}
+            imm=${FORECAST_DATE:5:2}
+            idd=${FORECAST_DATE:8:2}
+
             syyyy=${FCST_START_TIME:0:4}
             smm=${FCST_START_TIME:4:2}
             sdd=${FCST_START_TIME:6:2}
             shh=${FCST_START_TIME:9:2}
+
             eyyyy=${FCST_END_TIME:0:4}
             emm=${FCST_END_TIME:4:2}
             edd=${FCST_END_TIME:6:2}
             ehh=${FCST_END_TIME:9:2}
+
+            {% if test %}
+                GEO_EM_FILE=$FIX_DIR/geo_em.d01.nc_S2S_test
+            {% else %}
+                GEO_EM_FILE=$FIX_DIR/geo_em.d01.nc.S2S_4km_AG_24_flood
+            {% endif %}
 
 
     [[ENSMEMBER]]
@@ -75,7 +88,7 @@
             rm -rf *
         """
         script = """
-            get_forcing.sh -i $input_data -m $memN -o ungrib_input.grib --year $syyyy
+            get_forcing.sh -i $input_data -m $memN -o ungrib_input.grib --year $syyyy $lsm_input
         """
         post-script = """
             mkdir -p $MEM_SHARE_DIR
@@ -84,9 +97,11 @@
         """
     [[[environment]]]
         {% if REFORECAST %}
-            input_data={{FORCING_DATA_DIR}}/A1H${syyyy}${smm}${sdd}/${syyyy}${smm}${sdd}.grb
+            input_data={{FORCING_DATA_DIR}}/A1H${iyyyy}${imm}${idd}/${iyyyy}${imm}${idd}.grb
+            lsm_input="--lsminput {{FORCING_DATA_DIR}}/A1F${iyyyy}${imm}${idd}/${iyyyy}${imm}${idd}.grb"
         {% else %}
             input_data={{FORCING_DATA_DIR}}/A1F${syyyy}${smm}${sdd}/${syyyy}${smm}${sdd}.grb
+            lsm_input=""
         {% endif %}
 
     [[get_forcing<mem>]]
@@ -216,6 +231,17 @@
     
     [[merge_time<mem>]]
         inherit = MERGE_TIME, ENSMEMBER
+
+    [[CLEAN_UP]]
+        script = """
+            cd $input_dir
+            rm -rf wrf_out wrf_input metgrid_inputs real_inputs
+        """
+        [[[environment]]]
+            input_dir=$MEM_SHARE_DIR
+    
+    [[clean_up<mem>]]
+        inherit = CLEAN_UP, ENSMEMBER
 
     [[WEEKLY_MEAN]]
         script = """

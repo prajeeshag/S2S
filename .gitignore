@@ -177,5 +177,7 @@ pyrightconfig.json
 
 
 
-*.nc 
+*.nc
 *.grib
+fix/
+

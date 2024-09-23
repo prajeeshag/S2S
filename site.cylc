@@ -1,6 +1,9 @@
 {% set SITE='kaust' %}
-{% set NMEMBERS = 2 %}
-{% set initialCyclePoint = '2024-09-02' %}
+{% set NMEMBERS = 51 %}
+{% set FORECAST_DATE = '2024-09-19' %}
+{% set initialCyclePoint = '2024-09-19' %}
+{% set finalCyclePoint = '2024-09-19' %}
 {% set cycle = "R1" %}
 {% set FCSTDURATION = "P46D" %}
-input_data=${input_data_dir}/A1F${syyyy}${smm}${sdd}/${syyyy}${smm}${sdd}.grb
+{% set FORCING_DATA_DIR='/scratch/masabas/k10021/k1477/masabas/workS2S/ecmwfs2s' %}
+{% set REFORECAST = False %}

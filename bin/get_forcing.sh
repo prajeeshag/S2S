@@ -13,6 +13,7 @@ __koimain() {
   __addarg "-o" "--output" "storevalue" "optional" "" "Output grib data" ""
   __addarg "-n" "--nday" "storevalue" "optional" "46" "Forecast length in days" ""
   __addarg "" "--year" "storevalue" "optional" "" "Forecast year (used to extract reforecast)" ""
+  __addarg "" "--lsminput" "storevalue" "optional" "" "Input grib data for land-sea mask (because LSM not available in Reforecast)" ""
 
   __parseargs "$@"
 
@@ -51,7 +52,11 @@ __koimain() {
   rm inv "${tmpfile}".*
 
   # Get land-sea mask
-  grep LSM <"$inv" | wgrib -s -grib -i "${input}" -o lsm.grb
+  if [ -n "$lsminput" ]; then
+    wgrib "$lsminput" | grep LSM | wgrib -s -grib -i "${lsminput}" -o lsm.grb
+  else
+    grep LSM <"$inv" | wgrib -s -grib -i "${input}" -o lsm.grb
+  fi
 
   # Patching SST with buffer zone so that metgrid interplotes it correctly
   cdo -s -fillmiss2 -ifthen -ltc,0.01 lsm.grb -selvar,var34 "sorted_$tmpfile" "SST_$tmpfile"

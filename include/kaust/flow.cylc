@@ -33,11 +33,6 @@
         [[[environment]]]
             WPS_DIR=/scratch/athippp/iops/S2S/WPS
             WRF_DIR=/scratch/athippp/iops/S2S/WRF
-            {% if test %}
-                GEO_EM_FILE=/scratch/athippp/S2S/fix/geo_em.d01.nc_S2S_test
-            {% else %}
-                GEO_EM_FILE=/scratch/athippp/S2S/fix/geo_em.d01.nc.S2S_4km_AG_24_flood
-            {% endif %}
 
     [[installWrfWps]]
         platform=shaheen_login
@@ -112,7 +107,7 @@
             nproc_y={{ nproc_y }}
 
     [[UNGRIB, METGRID, GET_FORCING, MERGE_TIME, WEEKLY_MEAN, ens_median, ens_pctl]]
-        execution time limit = PT1H
+        execution time limit = PT3H
         [[[directives]]]
             --account={{projectid}}
             --nodes = 1
