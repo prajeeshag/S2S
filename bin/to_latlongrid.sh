@@ -61,6 +61,7 @@ __koimain() {
       setgrid="-setgrid,$grid_des"
     fi
     set -x
+    export REMAP_EXTRAPOLATE='off'
     cdo -${remap_method},griddes.txt $setgrid ${input} $output_dir/${filename}
     set +x
   done

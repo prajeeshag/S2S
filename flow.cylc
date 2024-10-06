@@ -259,7 +259,7 @@
 
     [[FOR_VIZ]]
         [[[environment]]]
-            files_to_process=surface_d01_T2.nc surface_d01_U10.nc
+            files_to_process=surface_d01_T2.nc
 
 
     [[ens_pctl]]
@@ -277,7 +277,7 @@
                 done
                     
                 for pctl in $percentiles; do
-                    cdo -enspctl,$pctl mem*/$file pctl${pctl}_$file
+                    cdo -subc,273.15 -enspctl,$pctl mem*/$file pctl${pctl}_$file
                 done
                 rm -rf mem*
 
@@ -297,10 +297,11 @@
     [[ens_median]]
         inherit = None, FOR_VIZ
         script = """
+            #TODO: Unit conversion: K->C for Temperature
             rm -rf *
             mkdir -p $output_dir
             for file in $files_to_process; do
-                cdo -ensmedian ${SHARE_DIR}/mem*/weekly_mean/$file $file
+                cdo -subc,273.15 -ensmedian ${SHARE_DIR}/mem*/weekly_mean/$file $file
                 to_latlongrid.sh -r 0.04 -o $output_dir $file
                 rm $file
             done
