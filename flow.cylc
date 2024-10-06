@@ -24,6 +24,7 @@
     [[graph]]
         R1 = """
             installWrfWps
+            installCondaPkgs
         """
 
         {{cycle}} = """
@@ -33,9 +34,11 @@
             metgrid<mem> => real<mem>
             real<mem> => wrf<mem>
             wrf<mem> => merge_time<mem>
+            installCondaPkgs[^] => merge_time<mem>
             merge_time<mem> => weekly_mean<mem>
             weekly_mean<mem> => ens_median
             merge_time<mem> => ens_pctl
+            merge_time<mem> => ens_thresh
             merge_time<mem> => clean_up<mem>
         """
 
@@ -76,7 +79,6 @@
             {% else %}
                 GEO_EM_FILE=$FIX_DIR/geo_em.d01.nc.S2S_4km_AG_24_flood
             {% endif %}
-
 
     [[ENSMEMBER]]
         [[[environment]]]
@@ -137,8 +139,10 @@
             rm -rf *
             envsub $ETC_DIR/namelist.wps namelist.wps
             mkdir metgrid 
+
             #  Use metgrid table from Hari for better SST interpolation
             cp $ETC_DIR/METGRID.TBL.ARW metgrid/METGRID.TBL
+
             ln -sf $MEM_SHARE_DIR/metgrid_inputs/* .
             ln_safe $GEO_EM_FILE geo_em.d01.nc
         """
@@ -269,22 +273,19 @@
             mkdir -p $output_dir
             for file in $files_to_process; do
 
-                k=1                
-                for ofile in ${SHARE_DIR}/mem*/merge_time/$file; do
-                    mkdir -p mem${k}
-                    to_latlongrid.sh -r ${resolution} -o mem${k} $ofile
-                    k=$((k+1))
-                done
-                    
+                mkdir -p latlon
+
+                # compute percentiles using cdo and regrid to lat-lon
                 for pctl in $percentiles; do
-                    cdo -subc,273.15 -enspctl,$pctl mem*/$file pctl${pctl}_$file
+                    echo "$pctl"
+                    cdo -subc,273.15 -enspctl,$pctl ${SHARE_DIR}/mem*/merge_time/$file pctl${pctl}_$file
+                    to_latlongrid.sh -r ${resolution} -o latlon pctl${pctl}_$file
                 done
-                rm -rf mem*
-
-                python -c 'import pctl_to_zarr; pctl_to_zarr.app()' pctl*_${file} ${file}.zip
-                rm pctl*_${file}
+                rm -rf pctl*
+                # write percentiles to zarr files 
+                python -c 'import pctl_to_zarr; pctl_to_zarr.app()' latlon/pctl*_${file} ${file}.zip
+                rm -rf latlon
                 mv ${file}.zip $output_dir
-
             done
         """
         [[[meta]]]
@@ -292,6 +293,35 @@
         [[[environment]]]
             output_dir=$SHARE_DIR/ens_pctl
             percentiles=0 20 40 50 60 80 100
+            resolution=0.04
+
+    [[ens_thresh]]
+        inherit = None, FOR_VIZ
+        script = """
+            rm -rf *
+            mkdir -p $output_dir
+            for file in $files_to_process; do
+
+                mkdir -p latlon
+
+                for thresh in $thresholds; do
+                    echo "$thresh"
+                    cdo -ensmean [ -gtc,$thresh -subc,273.15 : ${SHARE_DIR}/mem*/merge_time/$file ] thresh${thresh}_$file
+                    to_latlongrid.sh -r ${resolution} -o latlon thresh${thresh}_$file
+                done
+                rm -rf thresh*
+
+                # write to zarr files 
+                python -c 'import thresh_to_zarr; thresh_to_zarr.app()' latlon/thresh*_${file} ${file}.zip
+                rm -rf latlon
+                mv ${file}.zip $output_dir
+            done
+        """
+        [[[meta]]]
+            title = "Probability above threshold tempretures from time-merged WRF outputs, remaps to Lat-Lon"
+        [[[environment]]]
+            output_dir=$SHARE_DIR/ens_thresh
+            thresholds=36 40 44 48
             resolution=0.04
 
     [[ens_median]]
@@ -302,11 +332,12 @@
             mkdir -p $output_dir
             for file in $files_to_process; do
                 cdo -subc,273.15 -ensmedian ${SHARE_DIR}/mem*/weekly_mean/$file $file
-                to_latlongrid.sh -r 0.04 -o $output_dir $file
+                to_latlongrid.sh -r ${resolution} -o $output_dir $file
                 rm $file
             done
         """
         [[[environment]]]
             output_dir=$SHARE_DIR/ens_median
+            resolution=0.04
 
 {% include 'include/' ~ SITE ~ '/flow.cylc' %}

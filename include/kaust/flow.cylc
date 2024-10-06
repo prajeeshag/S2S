@@ -27,12 +27,21 @@
             module load craype-hugepages4M
             module load cray-netcdf
             # for wgrib, cdo, nco
-            export PATH="/scratch/athippp/iops/micromamba/envs/ap84SeasRF/bin:$PATH"
+            export PATH="/scratch/athippp/iops/micromamba/envs/operS2S/bin:$PATH"
+
         """
         platform=shaheen
         [[[environment]]]
             WPS_DIR=/scratch/athippp/iops/S2S/WPS
             WRF_DIR=/scratch/athippp/iops/S2S/WRF
+
+    [[installCondaPkgs]]
+        platform=shaheen_login
+        script = """
+            export MAMBA_EXE='/scratch/athippp/iops/bin/micromamba'
+            export MAMBA_ROOT_PREFIX='/scratch/athippp/iops/micromamba'
+            $MAMBA_EXE create -f $ETC_DIR/env.yaml -y
+        """
 
     [[installWrfWps]]
         platform=shaheen_login
@@ -106,7 +115,7 @@
             nproc_x={{ nproc_x }}
             nproc_y={{ nproc_y }}
 
-    [[UNGRIB, METGRID, GET_FORCING, MERGE_TIME, WEEKLY_MEAN, ens_median, ens_pctl]]
+    [[UNGRIB, METGRID, GET_FORCING, MERGE_TIME, WEEKLY_MEAN, ens_median, ens_pctl, ens_thresh]]
         execution time limit = PT3H
         [[[directives]]]
             --account={{projectid}}
