@@ -115,7 +115,7 @@
             nproc_x={{ nproc_x }}
             nproc_y={{ nproc_y }}
 
-    [[UNGRIB, METGRID, GET_FORCING, MERGE_TIME, WEEKLY_MEAN, ens_median, ens_pctl, ens_thresh]]
+    [[UNGRIB, METGRID, GET_FORCING, MERGE_TIME, ACC2RATE, TOTALRAIN, WEEKLY_MEAN, ens_median, ens_pctl, ens_thresh]]
         execution time limit = PT3H
         [[[directives]]]
             --account={{projectid}}

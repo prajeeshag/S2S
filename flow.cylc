@@ -11,6 +11,8 @@
 
 [task parameters]
     mem = 0..{{ NMEMBERS - 1 }}
+    acc2rate = RAINC, RAINNC
+    vizfld = RAIN_rate, T2
 
 [scheduling]
     initial cycle point = {{ initialCyclePoint }}
@@ -35,7 +37,10 @@
             real<mem> => wrf<mem>
             wrf<mem> => merge_time<mem>
             installCondaPkgs[^] => merge_time<mem>
-            merge_time<mem> => weekly_mean<mem>
+            merge_time<mem> => acc2rate<mem><acc2rate>
+            acc2rate<mem>_RAINC & acc2rate<mem>_RAINNC => totalrain<mem>
+            acc2rate<mem><acc2rate> & totalrain<mem> => weekly_mean<mem>
+
             weekly_mean<mem> => ens_median
             merge_time<mem> => ens_pctl
             merge_time<mem> => ens_thresh
@@ -236,6 +241,28 @@
     [[merge_time<mem>]]
         inherit = MERGE_TIME, ENSMEMBER
 
+    [[ACC2RATE]]
+        script = """
+        acc2rate.sh $input_dir/surface_d01_${varname}.nc $input_dir/surface_d01_${varname}_rate.nc
+        """
+        [[[environment]]]
+            input_dir=$MEM_SHARE_DIR/merge_time
+            varname=$CYLC_TASK_PARAM_acc2rate
+    
+    [[acc2rate<mem><acc2rate>]]
+        inherit = ACC2RATE, ENSMEMBER
+
+    [[TOTALRAIN]]
+        script = """
+        set -x
+        cdo -add $input_dir/surface_d01_RAINC_rate.nc $input_dir/surface_d01_RAINNC_rate.nc $input_dir/surface_d01_RAIN_rate.nc
+        """
+        [[[environment]]]
+            input_dir=$MEM_SHARE_DIR/merge_time
+    
+    [[totalrain<mem>]]
+        inherit = TOTALRAIN, ENSMEMBER
+
     [[CLEAN_UP]]
         script = """
             cd $input_dir
@@ -263,7 +290,56 @@
 
     [[FOR_VIZ]]
         [[[environment]]]
-            files_to_process=surface_d01_T2.nc
+            resolution=0.04
+            varname=$CYLC_TASK_PARAM_vizfld
+
+    [[REMAP2LL]]
+        script = """
+            rm -rf *
+            mkdir -p $output_dir
+            input_file=$input_dir/surface_d01_${varname}.nc
+            to_latlongrid.sh -r ${resolution} -o $output_dir $input_file
+        """
+        [[[meta]]]
+            title = "Remap to Lat-Lon grid"
+
+    [[remap2ll<mem><vizfld>]]
+        inherit = REMAP2LL, ENSMEMBER, FOR_VIZ
+        [[[environment]]]
+            input_dir=$MEM_SHARE_DIR/merge_time
+            output_dir=$input_dir/latlon
+
+    [[remap2llweekly<mem><vizfld>]]
+        inherit = REMAP2LL, ENSMEMBER, FOR_VIZ
+        [[[environment]]]
+            input_dir=$MEM_SHARE_DIR/weekly_mean
+            output_dir=$input_dir/latlon
+
+    [[TO_ZARR]]
+        inherit = None, FOR_VIZ
+        script = """
+            rm -rf *
+            mkdir -p $output_dir
+            for file in $files_to_process; do
+                mkdir -p latlon
+                # compute percentiles using cdo and regrid to lat-lon
+                for pctl in $percentiles; do
+                    echo "$pctl"
+                    cdo -subc,273.15 -enspctl,$pctl ${SHARE_DIR}/mem*/merge_time/$file pctl${pctl}_$file
+                    to_latlongrid.sh -r ${resolution} -o latlon pctl${pctl}_$file
+                done
+                rm -rf pctl*
+                # write percentiles to zarr files 
+                python -c 'import pctl_to_zarr; pctl_to_zarr.app()' latlon/pctl*_${file} ${file}.zip
+                rm -rf latlon
+                mv ${file}.zip $output_dir
+            done
+        """
+        [[[meta]]]
+            title = "Ensemble percentiles from time-merged WRF outputs, remaps to Lat-Lon"
+        [[[environment]]]
+            output_dir=$SHARE_DIR/ens_pctl
+            percentiles=0 20 40 50 60 80 100
 
 
     [[ens_pctl]]
