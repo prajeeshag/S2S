@@ -27,6 +27,7 @@
         R1 = """
             installWrfWps
             installCondaPkgs
+            install7z
         """
 
         {{cycle}} = """
@@ -38,12 +39,11 @@
             wrf<mem> => merge_time<mem>
             installCondaPkgs[^] => merge_time<mem>
             merge_time<mem> => acc2rate<mem><acc2rate>
-            acc2rate<mem>_RAINC & acc2rate<mem>_RAINNC => totalrain<mem>
-            acc2rate<mem><acc2rate> & totalrain<mem> => weekly_mean<mem>
+            acc2rate<mem><acc2rate> => totalrain<mem>
 
-            weekly_mean<mem> => ens_median
-            merge_time<mem> => ens_pctl
-            merge_time<mem> => ens_thresh
+            #Visualization
+            totalrain<mem> & install7z[^] => viz<vizfld>
+
             merge_time<mem> => clean_up<mem>
         """
 
@@ -84,6 +84,14 @@
             {% else %}
                 GEO_EM_FILE=$FIX_DIR/geo_em.d01.nc.S2S_4km_AG_24_flood
             {% endif %}
+
+    [[install7z]]
+        script = """
+            mkdir -p ${CYLC_WORKFLOW_SHARE_DIR}/bin
+            cd ${CYLC_WORKFLOW_SHARE_DIR}/bin
+            wget https://www.7-zip.org/a/7z2408-linux-x64.tar.xz 
+            tar -xvf 7z2408-linux-x64.tar.xz 
+        """
 
     [[ENSMEMBER]]
         [[[environment]]]
@@ -288,11 +296,6 @@
     [[weekly_mean<mem>]]
         inherit = WEEKLY_MEAN, ENSMEMBER
 
-    [[FOR_VIZ]]
-        [[[environment]]]
-            resolution=0.04
-            varname=$CYLC_TASK_PARAM_vizfld
-
     [[REMAP2LL]]
         script = """
             rm -rf *
@@ -304,75 +307,52 @@
             title = "Remap to Lat-Lon grid"
 
     [[remap2ll<mem><vizfld>]]
-        inherit = REMAP2LL, ENSMEMBER, FOR_VIZ
+        inherit = REMAP2LL, ENSMEMBER
         [[[environment]]]
             input_dir=$MEM_SHARE_DIR/merge_time
             output_dir=$input_dir/latlon
-
-    [[remap2llweekly<mem><vizfld>]]
-        inherit = REMAP2LL, ENSMEMBER, FOR_VIZ
-        [[[environment]]]
-            input_dir=$MEM_SHARE_DIR/weekly_mean
-            output_dir=$input_dir/latlon
-
-    [[TO_ZARR]]
-        inherit = None, FOR_VIZ
-        script = """
-            rm -rf *
-            mkdir -p $output_dir
-            for file in $files_to_process; do
-                mkdir -p latlon
-                # compute percentiles using cdo and regrid to lat-lon
-                for pctl in $percentiles; do
-                    echo "$pctl"
-                    cdo -subc,273.15 -enspctl,$pctl ${SHARE_DIR}/mem*/merge_time/$file pctl${pctl}_$file
-                    to_latlongrid.sh -r ${resolution} -o latlon pctl${pctl}_$file
-                done
-                rm -rf pctl*
-                # write percentiles to zarr files 
-                python -c 'import pctl_to_zarr; pctl_to_zarr.app()' latlon/pctl*_${file} ${file}.zip
-                rm -rf latlon
-                mv ${file}.zip $output_dir
-            done
-        """
-        [[[meta]]]
-            title = "Ensemble percentiles from time-merged WRF outputs, remaps to Lat-Lon"
-        [[[environment]]]
-            output_dir=$SHARE_DIR/ens_pctl
-            percentiles=0 20 40 50 60 80 100
-
-
-    [[ens_pctl]]
-        inherit = None, FOR_VIZ
-        script = """
-            rm -rf *
-            mkdir -p $output_dir
-            for file in $files_to_process; do
-
-                mkdir -p latlon
-
-                # compute percentiles using cdo and regrid to lat-lon
-                for pctl in $percentiles; do
-                    echo "$pctl"
-                    cdo -subc,273.15 -enspctl,$pctl ${SHARE_DIR}/mem*/merge_time/$file pctl${pctl}_$file
-                    to_latlongrid.sh -r ${resolution} -o latlon pctl${pctl}_$file
-                done
-                rm -rf pctl*
-                # write percentiles to zarr files 
-                python -c 'import pctl_to_zarr; pctl_to_zarr.app()' latlon/pctl*_${file} ${file}.zip
-                rm -rf latlon
-                mv ${file}.zip $output_dir
-            done
-        """
-        [[[meta]]]
-            title = "Ensemble percentiles from time-merged WRF outputs, remaps to Lat-Lon"
-        [[[environment]]]
-            output_dir=$SHARE_DIR/ens_pctl
-            percentiles=0 20 40 50 60 80 100
             resolution=0.04
+            varname=$CYLC_TASK_PARAM_vizfld
+
+    [[viz<vizfld>]]
+        script = """
+            # rm -rf *
+            mkdir -p $output_dir
+            python -c 'import viz; viz.app()' --vname ${varname} ${SHARE_DIR}/mem*/merge_time/surface_d01_${varname}.nc
+            mv *.zip $output_dir
+        """
+        [[[environment]]]
+            varname=$CYLC_TASK_PARAM_vizfld
+            output_dir=${SHARE_DIR}/viz
+
+
+
+    [[ens_pctl<vizfld>]]
+        script = """
+            rm -rf *
+            mkdir -p $output_dir
+            file=surface_d01_${varname}.nc
+            mkdir -p latlon
+
+            # compute percentiles using cdo and regrid to lat-lon
+            for pctl in $percentiles; do
+                 echo "$pctl"
+                 cdo -enspctl,$pctl ${SHARE_DIR}/mem*/merge_time/$file pctl${pctl}_$file
+                 to_latlongrid.sh -r ${resolution} -o latlon pctl${pctl}_$file
+            done
+            rm -rf pctl*
+            # write percentiles to zarr files 
+            python -c 'import pctl_to_zarr; pctl_to_zarr.app()' latlon/pctl*_${file} ${file}.zip
+            rm -rf latlon
+            mv ${file}.zip $output_dir
+        """
+        [[[meta]]]
+            title = "Ensemble percentiles from time-merged WRF outputs, remaps to Lat-Lon"
+        [[[environment]]]
+            output_dir=$SHARE_DIR/ens_pctl
+            percentiles=0 20 40 50 60 80 100
 
     [[ens_thresh]]
-        inherit = None, FOR_VIZ
         script = """
             rm -rf *
             mkdir -p $output_dir
@@ -401,9 +381,7 @@
             resolution=0.04
 
     [[ens_median]]
-        inherit = None, FOR_VIZ
         script = """
-            #TODO: Unit conversion: K->C for Temperature
             rm -rf *
             mkdir -p $output_dir
             for file in $files_to_process; do

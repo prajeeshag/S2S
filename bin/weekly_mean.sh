@@ -8,24 +8,23 @@ koiname="$0"
 koidescription="Calculate weekly mean from time merged WRF output"
 
 function __verify_weekstart {
-    # verify that $1 is a valid HTTP method
-    if [[ "$1" -lt 0 ]] || [[ "$1" -gt 6 ]]; then 
-        __errortext "$koiname: err: invalid weekstart: $1"
-        return 1
-    fi
+  # verify that $1 is a valid HTTP method
+  if [[ "$1" -lt 0 ]] || [[ "$1" -gt 6 ]]; then
+    __errortext "$koiname: err: invalid weekstart: $1"
+    return 1
+  fi
 }
 
 # Function to calculate days to skip for the nearest desired week start day
 cal_skip_days() {
-    local current_day=$1      # Current weekday (0-6)
-    local desired_start=$2    # Desired week start day (0-6)
+  local current_day=$1   # Current weekday (0-6)
+  local desired_start=$2 # Desired week start day (0-6)
 
-    # Calculate the number of days to skip
-    local skip_days=$(( (desired_start - current_day + 7) % 7 ))
+  # Calculate the number of days to skip
+  local skip_days=$(((desired_start - current_day + 7) % 7))
 
-    echo $skip_days
+  echo $skip_days
 }
-
 
 __koimain() {
   __addarg "-h" "--help" "help" "optional" "" "$koidescription" ""
@@ -52,7 +51,7 @@ __koimain() {
     filename=$(basename "$input")
 
     # calculate weekly mean
-    set -x 
+    set -x
     cdo -timselmean,7 -daymean -seldate,${start_date:0:10},${end_date} ${input} ${filename}
     set +x
   done
