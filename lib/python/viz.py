@@ -29,6 +29,7 @@ logger.setLevel(logging.INFO)
 app = typer.Typer()
 
 cdo = Cdo(tempdir="./tmp", silent=False)
+os.environ["REMAP_EXTRAPOLATE"] = "off"
 
 
 def to_zip(input, output):
@@ -67,7 +68,9 @@ def cdo_execute(input, output):
         logger.info(f"{output} already exists; skipping")
         return output
     logger.info(f"Processing: cdo {input} {output}")
-    cdo.copy(input=input, output=output)
+    tmp = cdo.copy(input=input)
+    Path(output).parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(tmp, output)
     logger.info(f"Completed processing: cdo {input} {output}")
     return output
 
@@ -324,7 +327,7 @@ def process_daily(vname, preprocfiles, operator):
         daily_files, ["min", "median", "max"], f"{vname}_daily_{operator}"
     )
 
-    output = (f"{vname}_daily_{operator}.zarr",)
+    output = f"output/{vname}_daily_{operator}.zarr"
     if Path(f"{output}.zip").exists():
         logger.info(f"{output}.zip already exists; skipping")
     else:
@@ -332,7 +335,7 @@ def process_daily(vname, preprocfiles, operator):
             ensstat_daily_files,
             ["min", "median", "max"],
             "stat",
-            f"{vname}_daily_{operator}.zarr",
+            output,
         )
 
     try:
@@ -363,7 +366,7 @@ def to_ens_prob(inputfiles, toperator, thresholds, vname):
         )
         res = client.gather(futures)
     logger.info(f"Processed: {res} for {thresholds}")
-    to_zarr(res, thresholds, "prob", f"{vname}_{toperator}_threshold.zarr")
+    to_zarr(res, thresholds, "prob", f"output/{vname}_{toperator}_threshold.zarr")
 
 
 def ens_prob(input_files, operator, threshold, vname):
@@ -386,7 +389,7 @@ def process_weekly(vname, preprocfiles, operator):
     if not flag:
         return
     weekly_mean_files = to_weekly(preprocfiles)
-    ens_stat(weekly_mean_files, "median", f"{vname}_weekly_mean")
+    ens_stat(weekly_mean_files, "median", f"output/{vname}_weekly_mean")
 
 
 def to_ens_stat(inputfiles, operators, vname):
@@ -425,7 +428,7 @@ def process_percentiles(vname, preprocfiles):
         return
     if not pecentiles:
         return
-    output = f"{vname}_pctl.zarr"
+    output = f"output/{vname}_enspctl.zarr"
     if Path(f"{output}.zip").exists():
         logger.info(f"{output}.zip already exists; skipping")
     pctl = [f"pctl,{i}" for i in pecentiles]
@@ -440,7 +443,7 @@ def process_to_zarr(vname, preprocfiles, members):
         return
     if not flag:
         return
-    output = f"{vname}.zarr"
+    output = f"output/{vname}.zarr"
     if Path(f"{output}.zip").exists():
         logger.info(f"{output}.zip already exists; skipping")
         return
@@ -457,6 +460,8 @@ def main(
         typer.Argument(help="WRF output file(s)"),
     ],
 ):
+    # mkdir outout dir
+    Path("output").mkdir(parents=True, exist_ok=True)
 
     members = get_member_coord(inputfiles)
     members, inputfiles = sort_by_coord(members, inputfiles)
