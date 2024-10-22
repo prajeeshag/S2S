@@ -3,33 +3,36 @@
 - Refer the `S2S-visualization-catalog.pdf` for the figures,
 - The below numbering for each item are the same figure numbers from the slides
 
-# DATA
+# Visualization catalog
 ## Temperature [Refer Slide-1]
-Path: kw61469:/home/pammirp/data/ncm/subseasonal/temperature/stage
+1. [ ] [ ] Weekly spatial (ensmedian Spatial) - T2_weekly_mean_ensmedian.nc
+2. [ ] [ ] Hourly Time-series (Pecentile) - T2_enspctl.zarr.zip
+3. [ ] [ ] Daily Time-series (median with range) - T2_daily_max_ensrange.zarr.zip
+4. [ ] [ ] Daily Time-series (Probability of air Temperature > threshold) - T2_daily_max_gtc_threshold.zarr.zip
+5. [ ] [ ] Daily Table (Probability of air Temperature > threshold) - T2_daily_max_gtc_threshold.zarr.zip
+6. [ ] [ ] Cumulative distribution function - T2_weekly.zarr.zip, reforecast/T2_weekly.zarr.zip, s2s.get_cdf()[s2s.py]
+7. [ ] [ ] Weekly spatial (Extreme Forecast Index) - T2_weekly_mean_[efi,sotp,sotn].nc
 
-1. Weekly spatial (ensmedian Spatial) - T2_weekly_mean_ensmedian.nc
-2. Hourly Time-series (Pecentile) - T2_enspctl.zarr.zip
-3. Daily Time-series (median with range) - T2_daily_max.zarr.zip
-4. Daily Time-series (Probability of air Temperature > threshold) - T2_daily_max_gtc_threshold.zarr.zip
-5. Daily Table (Probability of air Temperature > threshold) - T2_daily_max_gtc_threshold.zarr.zip
-6. Cumulative distribution function - T2_weekly.zarr.zip, reforecast/T2_weekly.zarr.zip, s2s.get_cdf()[s2s.py]
-7. Weekly spatial (Extreme Forecast Index) - T2_weekly_mean_[efi,sotp,sotn].nc
-
+Data Path: kw61469:/home/pammirp/data/ncm/subseasonal/temperature/stage
 
 ## Rainfall [Refer Slide-2]
-Path: kw61469:/home/pammirp/data/ncm/subseasonal/rainfall/stage
 
-1. Weekly spatial (Probability > threshold) - RAIN_weekly_gtc_threshold.nc
-2. Weekly spatial (ensmedian) - RAIN_weekly_ensmedian.nc
-3. Daily time-series (Accumulated) - (Pending...)
-4. Weekly Time-series (median with range) - (Pending...)
-5. Weekly Time-series (Probability  > threshold) - RAIN_daily_max_gtc_threshold.zarr.zip
-6. Weekly Table (Probability > threshold) - RAIN_daily_max_gtc_threshold.zarr.zip
-7. Cumulative distribution function - RAIN_weekly.zarr.zip, reforecast/RAIN_weekly.zarr.zip, s2s.get_cdf()[s2s.py]
-8. Weekly spatial (Extreme Forecast Index) - RAIN_weekly_mean_[efi,sotp,sotn].nc
+1. [ ] [ ] Weekly spatial (Probability > threshold) - RAIN_weekly_gtc_threshold.nc
+2. [ ] [ ] Weekly spatial (ensmedian) - RAIN_weekly_ensmedian.nc
+3. [ ] [ ] Daily time-series (Accumulated) - RAIN_daily_acc_enspctl.zarr.zip (Pending...)
+4. [ ] [ ] Weekly Time-series (median with range) - RAIN_weekly_ensrange.zarr.zip 
+5. [ ] [ ] Weekly Time-series (Probability  > threshold) - RAIN_daily_max_gtc_threshold.zarr.zip
+6. [ ] [ ] Weekly Table (Probability > threshold) - RAIN_daily_max_gtc_threshold.zarr.zip
+7. [ ] [ ] Cumulative distribution function - RAIN_weekly.zarr.zip, reforecast/RAIN_weekly.zarr.zip, s2s.get_cdf()[s2s.py]
+8. [ ] [ ] Weekly spatial (Extreme Forecast Index) - RAIN_weekly_mean_[efi,sotp,sotn].nc
+
+Data Path: kw61469:/home/pammirp/data/ncm/subseasonal/rainfall/stage
+
+# Python Code
+- s2s.py
 
 
-# Visualization
+# Details
 
 ## Extreme Forecast Index Spatial Map [Slide-1<fig.7>, Slide-2<fig.8>]
 
@@ -48,7 +51,7 @@ Temperture should be plot with two contours levels (0.5 for positive and -0.5 fo
 
 
 ## CDF plot for one grid point [Slide-1<fig.6>, Slide-2<fig.7>]
-Date files:
+Data files:
 
 - `<VAR>_weekly.zarr.zip`
 - `reforecast/<VAR>_weekly.zarr.zip`
