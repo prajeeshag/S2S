@@ -8,7 +8,7 @@
 
 | No. | Description | Files | Data Status | Viz Status |
 | :-- | :-- | :-- | :-- | :-- |
-| 1. |  Weekly spatial (ensmedian Spatial) | T2_weekly_mean_ensmedian.nc | - [x] | [ ]
+| 1. |  Weekly spatial (ensmedian Spatial) | T2_weekly_mean_ensmedian.nc | :white_check_mark:  | [ ]
 | 2. |  Hourly Time-series (Pecentile) | T2_enspctl.zarr.zip | [x] | [ ]
 | 3. |  Daily Time-series (median with range) | T2_daily_max_ensrange.zarr.zip | [x] | [ ]
 | 4. |  Daily Time-series (Probability of air Temperature > threshold) | T2_daily_max_gtc_threshold.zarr.zip | [x] | [ ]
