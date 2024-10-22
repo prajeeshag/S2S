@@ -1,34 +1,36 @@
 
 ## NOTE
-- Refer the `S2S-visualization-catalog.pdf` for the figures,
+- Refer the `S2S-visualization-catalog.pdf` for the figures
 - The below numbering for each item are the same figure numbers from the slides
+- :heavy_check_mark: done but not finalized
+- :white_check_mark: finalized
 
 # Visualization catalog
 ## Temperature [Refer Slide-1]
 
 | No. | Description | Files | Data Status | Viz Status |
 | :-- | :-- | :-- | :-- | :-- |
-| 1. |  Weekly spatial (ensmedian Spatial) | T2_weekly_mean_ensmedian.nc | :white_check_mark:  | [ ]
-| 2. |  Hourly Time-series (Pecentile) | T2_enspctl.zarr.zip | [x] | [ ]
-| 3. |  Daily Time-series (median with range) | T2_daily_max_ensrange.zarr.zip | [x] | [ ]
-| 4. |  Daily Time-series (Probability of air Temperature > threshold) | T2_daily_max_gtc_threshold.zarr.zip | [x] | [ ]
-| 5. |  Daily Table (Probability of air Temperature > threshold) | T2_daily_max_gtc_threshold.zarr.zip | [x] | [ ]
-| 6. |  Cumulative distribution function | T2_weekly.zarr.zip, reforecast/T2_weekly.zarr.zip, s2s.get_cdf()[s2s.py] | [x] | [ ]
-| 7. |  Weekly spatial (Extreme Forecast Index) | T2_weekly_mean_[efi,sotp,sotn].nc | [x] | [ ]
+| 1. |  Weekly spatial (ensmedian Spatial) | T2_weekly_mean_ensmedian.nc | :heavy_check_mark: | :heavy_check_mark: 
+| 2. |  Hourly Time-series (Pecentile) | T2_enspctl.zarr.zip | :heavy_check_mark: | :heavy_check_mark: 
+| 3. |  Daily Time-series (median with range) | T2_daily_max_ensrange.zarr.zip | :heavy_check_mark: | :heavy_check_mark:
+| 4. |  Daily Time-series (Probability of air Temperature > threshold) | T2_daily_max_gtc_threshold.zarr.zip | :heavy_check_mark: | :heavy_check_mark:
+| 5. |  Daily Table (Probability of air Temperature > threshold) | T2_daily_max_gtc_threshold.zarr.zip | :heavy_check_mark: | 
+| 6. |  Cumulative distribution function | T2_weekly.zarr.zip, reforecast/T2_weekly.zarr.zip, s2s.get_cdf()[s2s.py] | :heavy_check_mark: | 
+| 7. |  Weekly spatial (Extreme Forecast Index) | T2_weekly_mean_[efi,sotp,sotn].nc | :heavy_check_mark: | 
 
 Data Path: kw61469:/home/pammirp/data/ncm/subseasonal/temperature/stage
 
 ## Rainfall [Refer Slide-2]
 | No. | Description | Files | Data Status | Viz Status |
 | :-- | :-- | :-- | :-- | :-- |
-| 1. | Weekly spatial (Probability > threshold) | RAIN_weekly_gtc_threshold.nc | [x] | [ ] |
-| 2. | Weekly spatial (ensmedian) | RAIN_weekly_ensmedian.nc | [x] | [ ] |
-| 3. | Daily time-series (Accumulated) | RAIN_daily_acc_enspctl.zarr.zip | [ ] | [ ] | 
-| 4. | Weekly Time-series (median with range) | RAIN_weekly_ensrange.zarr.zip | [x] | [ ] |
-| 5. | Weekly Time-series (Probability  > threshold) | RAIN_daily_max_gtc_threshold.zarr.zip | [x] | [ ] |
-| 6. | Weekly Table (Probability > threshold) | RAIN_daily_max_gtc_threshold.zarr.zip  | [x] | [ ] |
-| 7. | Cumulative distribution function | RAIN_weekly.zarr.zip, reforecast/RAIN_weekly.zarr.zip, s2s.get_cdf()[s2s.py] | [x] | [ ] |
-| 8. | Weekly spatial (Extreme Forecast Index) | RAIN_weekly_mean_[efi,sotp,sotn].nc | [x] | [ ] |
+| 1. | Weekly spatial (Probability > threshold) | RAIN_weekly_gtc_threshold.nc | :heavy_check_mark: | 
+| 2. | Weekly spatial (ensmedian) | RAIN_weekly_ensmedian.nc | :heavy_check_mark: | 
+| 3. | Daily time-series (Accumulated) | RAIN_daily_acc_enspctl.zarr.zip | [ ] | 
+| 4. | Weekly Time-series (median with range) | RAIN_weekly_ensrange.zarr.zip | :heavy_check_mark: | 
+| 5. | Weekly Time-series (Probability  > threshold) | RAIN_daily_max_gtc_threshold.zarr.zip | :heavy_check_mark: | 
+| 6. | Weekly Table (Probability > threshold) | RAIN_daily_max_gtc_threshold.zarr.zip  | :heavy_check_mark: | 
+| 7. | Cumulative distribution function | RAIN_weekly.zarr.zip, reforecast/RAIN_weekly.zarr.zip, s2s.get_cdf()[s2s.py] | :heavy_check_mark: | 
+| 8. | Weekly spatial (Extreme Forecast Index) | RAIN_weekly_mean_[efi,sotp,sotn].nc | :heavy_check_mark: | 
 
 Data Path: kw61469:/home/pammirp/data/ncm/subseasonal/rainfall/stage
 
