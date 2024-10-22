@@ -2,8 +2,8 @@
 ## NOTE
 - Refer the `S2S-visualization-catalog.pdf` for the figures
 - The below numbering for each item are the same figure numbers from the slides
-- :heavy_check_mark: done but not finalized
-- :white_check_mark: finalized
+- :heavy_check_mark: means done but not finalized
+- :white_check_mark: means finalized
 
 # Visualization catalog
 ## Temperature [Refer Slide-1]
@@ -25,7 +25,7 @@ Data Path: kw61469:/home/pammirp/data/ncm/subseasonal/temperature/stage
 | :-- | :-- | :-- | :-- | :-- |
 | 1. | Weekly spatial (Probability > threshold) | RAIN_weekly_gtc_threshold.nc | :heavy_check_mark: | 
 | 2. | Weekly spatial (ensmedian) | RAIN_weekly_ensmedian.nc | :heavy_check_mark: | 
-| 3. | Daily time-series (Accumulated) | RAIN_daily_acc_enspctl.zarr.zip | [ ] | 
+| 3. | Daily time-series (Accumulated) | RAIN_daily_acc_enspctl.zarr.zip |  | 
 | 4. | Weekly Time-series (median with range) | RAIN_weekly_ensrange.zarr.zip | :heavy_check_mark: | 
 | 5. | Weekly Time-series (Probability  > threshold) | RAIN_daily_max_gtc_threshold.zarr.zip | :heavy_check_mark: | 
 | 6. | Weekly Table (Probability > threshold) | RAIN_daily_max_gtc_threshold.zarr.zip  | :heavy_check_mark: | 
