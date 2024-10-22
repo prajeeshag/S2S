@@ -316,10 +316,10 @@
 
     [[viz<vizfld>]]
         script = """
-            # rm -rf *
             mkdir -p $output_dir
             python -c 'import viz; viz.app()' --vname ${varname} ${SHARE_DIR}/mem*/merge_time/surface_d01_${varname}.nc
-            mv *.zip $output_dir
+            mv output/* $output_dir
+            #rm -rf *
         """
         [[[environment]]]
             varname=$CYLC_TASK_PARAM_vizfld
@@ -327,71 +327,7 @@
 
 
 
-    [[ens_pctl<vizfld>]]
-        script = """
-            rm -rf *
-            mkdir -p $output_dir
-            file=surface_d01_${varname}.nc
-            mkdir -p latlon
 
-            # compute percentiles using cdo and regrid to lat-lon
-            for pctl in $percentiles; do
-                 echo "$pctl"
-                 cdo -enspctl,$pctl ${SHARE_DIR}/mem*/merge_time/$file pctl${pctl}_$file
-                 to_latlongrid.sh -r ${resolution} -o latlon pctl${pctl}_$file
-            done
-            rm -rf pctl*
-            # write percentiles to zarr files 
-            python -c 'import pctl_to_zarr; pctl_to_zarr.app()' latlon/pctl*_${file} ${file}.zip
-            rm -rf latlon
-            mv ${file}.zip $output_dir
-        """
-        [[[meta]]]
-            title = "Ensemble percentiles from time-merged WRF outputs, remaps to Lat-Lon"
-        [[[environment]]]
-            output_dir=$SHARE_DIR/ens_pctl
-            percentiles=0 20 40 50 60 80 100
 
-    [[ens_thresh]]
-        script = """
-            rm -rf *
-            mkdir -p $output_dir
-            for file in $files_to_process; do
-
-                mkdir -p latlon
-
-                for thresh in $thresholds; do
-                    echo "$thresh"
-                    cdo -ensmean [ -gtc,$thresh -subc,273.15 : ${SHARE_DIR}/mem*/merge_time/$file ] thresh${thresh}_$file
-                    to_latlongrid.sh -r ${resolution} -o latlon thresh${thresh}_$file
-                done
-                rm -rf thresh*
-
-                # write to zarr files 
-                python -c 'import thresh_to_zarr; thresh_to_zarr.app()' latlon/thresh*_${file} ${file}.zip
-                rm -rf latlon
-                mv ${file}.zip $output_dir
-            done
-        """
-        [[[meta]]]
-            title = "Probability above threshold tempretures from time-merged WRF outputs, remaps to Lat-Lon"
-        [[[environment]]]
-            output_dir=$SHARE_DIR/ens_thresh
-            thresholds=36 40 44 48
-            resolution=0.04
-
-    [[ens_median]]
-        script = """
-            rm -rf *
-            mkdir -p $output_dir
-            for file in $files_to_process; do
-                cdo -subc,273.15 -ensmedian ${SHARE_DIR}/mem*/weekly_mean/$file $file
-                to_latlongrid.sh -r ${resolution} -o $output_dir $file
-                rm $file
-            done
-        """
-        [[[environment]]]
-            output_dir=$SHARE_DIR/ens_median
-            resolution=0.04
 
 {% include 'include/' ~ SITE ~ '/flow.cylc' %}

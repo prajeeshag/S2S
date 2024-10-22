@@ -179,4 +179,5 @@ pyrightconfig.json
 *.nc
 *.grib
 fix/
+data/
 
