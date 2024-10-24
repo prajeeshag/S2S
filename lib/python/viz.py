@@ -1,21 +1,19 @@
 import datetime
-import glob
+import logging
 import os
-from pathlib import Path
 import shutil
 import subprocess
-import time
-from cdo import Cdo
-import typer
-from typing import Annotated
-import xarray as xr
 import tempfile
-from dask.distributed import Client, LocalCluster
-import multiprocessing as mp
+import time
+from pathlib import Path
+from typing import Annotated
 
+import typer
+import xarray as xr
 import yaml
 import zarr
-import logging
+from cdo import Cdo
+from dask.distributed import Client, LocalCluster
 
 # setup logger to use stdout
 logger = logging.getLogger(__name__)
@@ -73,17 +71,6 @@ def cdo_execute(input, output):
     shutil.move(tmp, output)
     logger.info(f"Completed processing: cdo {input} {output}")
     return output
-
-
-def get_config():
-    current_dir = Path(__file__).parent
-    yaml_file_path = current_dir / "viz.yaml"
-    with open(yaml_file_path, "r") as file:
-        data = yaml.safe_load(file)
-        return data
-
-
-CONFIG = get_config()
 
 
 def process_rename_var(vname):
