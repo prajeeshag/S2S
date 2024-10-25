@@ -8,11 +8,12 @@
 
 [scheduler]
     install = fix/
+    
 
 [task parameters]
     mem = 0..{{ NMEMBERS - 1 }}
     acc2rate = RAINC, RAINNC
-    vizfld = RAIN_rate, T2
+    vizfld = T2
 
 [scheduling]
     initial cycle point = {{ initialCyclePoint }}
@@ -26,7 +27,7 @@
     [[graph]]
         R1 = """
             installWrfWps
-            installCondaPkgs
+            installCondaPkgs # TODO: bring to core from include
             install7z
         """
 
@@ -249,9 +250,9 @@
     [[merge_time<mem>]]
         inherit = MERGE_TIME, ENSMEMBER
 
-    [[ACC2RATE]]
+    [[ACC2TOTAL]]
         script = """
-        acc2rate.sh $input_dir/surface_d01_${varname}.nc $input_dir/surface_d01_${varname}_rate.nc
+        acc2rate.sh $input_dir/surface_d01_${varname}.nc $input_dir/surface_d01_T${varname}.nc
         """
         [[[environment]]]
             input_dir=$MEM_SHARE_DIR/merge_time
@@ -282,50 +283,23 @@
     [[clean_up<mem>]]
         inherit = CLEAN_UP, ENSMEMBER
 
-    [[WEEKLY_MEAN]]
+    [[VIZ]]
         script = """
+            output_dir=${SHARE_DIR}/viz/${fieldname}/stage
             mkdir -p $output_dir
-            # Week Start Monday = 1
-            weekly_mean.sh --weekstart 1 $input_dir/*.nc
-            mv *.nc $output_dir
-        """
-        [[[environment]]]
-            input_dir=$MEM_SHARE_DIR/merge_time
-            output_dir=$MEM_SHARE_DIR/weekly_mean
-    
-    [[weekly_mean<mem>]]
-        inherit = WEEKLY_MEAN, ENSMEMBER
-
-    [[REMAP2LL]]
-        script = """
-            rm -rf *
-            mkdir -p $output_dir
-            input_file=$input_dir/surface_d01_${varname}.nc
-            to_latlongrid.sh -r ${resolution} -o $output_dir $input_file
-        """
-        [[[meta]]]
-            title = "Remap to Lat-Lon grid"
-
-    [[remap2ll<mem><vizfld>]]
-        inherit = REMAP2LL, ENSMEMBER
-        [[[environment]]]
-            input_dir=$MEM_SHARE_DIR/merge_time
-            output_dir=$input_dir/latlon
-            resolution=0.04
-            varname=$CYLC_TASK_PARAM_vizfld
-
-    [[viz<vizfld>]]
-        script = """
-            mkdir -p $output_dir
-            python -c 'import viz; viz.app()' --vname ${varname} ${SHARE_DIR}/mem*/merge_time/surface_d01_${varname}.nc
+            python -c 'import viz; viz.app()' ${fieldname} "${SHARE_DIR}/mem*/merge_time/${input_file_name}" ""
             mv output/* $output_dir
             #rm -rf *
         """
         [[[environment]]]
-            varname=$CYLC_TASK_PARAM_vizfld
-            output_dir=${SHARE_DIR}/viz
+            fieldname=
+            input_file_name=
 
-
+    [[viz<vizfld>]]
+        inherit = None, VIZ
+        [[[environment]]]
+            fieldname=$CYLC_TASK_PARAM_vizfld
+            input_file_name=surface_d01_${CYLC_TASK_PARAM_vizfld}.nc
 
 
 

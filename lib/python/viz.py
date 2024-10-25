@@ -17,7 +17,6 @@ from cdo import Cdo
 from dask.distributed import Client, LocalCluster
 from viz_config import (
     EnsStat,
-    EnsStatOpr,
     FileType,
     RemapMethod,
     TimeStat,
@@ -56,8 +55,12 @@ def griddes(lonsize, latsize, slon, slat, resolution):
     xinc=resolution
     yinc=resolution
     """
-    temp_file = tempfile.NamedTemporaryFile(delete=False)
-    with open(temp_file.name, "w") as f:
+    temp_file = (
+        "griddes_"
+        + create_hash(f"{lonsize} {latsize} {slon} {slat} {resolution}")
+        + ".txt"
+    )
+    with open(temp_file, "w") as f:
         f.write(
             f"""gridtype='lonlat'
                 xsize={lonsize}\n
@@ -68,22 +71,25 @@ def griddes(lonsize, latsize, slon, slat, resolution):
                 yinc={resolution}\n
             """
         )
-    return temp_file.name
+    return temp_file
 
 
 def create_hash(input_string: str) -> str:
-    return hashlib.sha256().update(input_string.encode("utf-8")).hexdigest()
+    hash = hashlib.sha256()
+    hash.update(input_string.encode("utf-8"))
+    return f"{hash.hexdigest()}.nc"
+    # return input_string.replace(" ", "").replace("\n", "").replace("/", "_")
 
 
-def cdo_execute(input, output=None):
-    if output is None:
-        output = create_hash(input)
+def cdo_execute(input):
+    logger.info(f"Processing: cdo {input} ")
+    output = create_hash(input)
+    logger.info(f"hash path: {output}")
     if Path(output).exists():
         logger.info(f"output for `cdo {input}` already exists; not recomputing")
         return output
-    logger.info(f"Processing: cdo {input} ")
     tmp = cdo.copy(input=input)
-    Path(output).parent.mkdir(parents=True, exist_ok=True)
+    # Path(output).parent.mkdir(parents=True, exist_ok=True)
     shutil.move(tmp, output)
     logger.info(f"Completed processing: cdo {input}")
     return output
@@ -193,6 +199,8 @@ def write_to_nc(
     if len(coord) == 1:
         shutil.move(ncfiles[0], output)
         logger.info(f"{output} created")
+        return
+
     ds = xr.open_mfdataset(
         ncfiles,
         chunks={"lat": 10, "lon": 10},
@@ -225,7 +233,7 @@ def remap_wgts(
     res: float | None = None,
     method: RemapMethod = RemapMethod.nearestneighbor,
 ):
-    ds = xr.open_dataset(inputfile, chunks={"Time": 1})
+    ds = xr.open_dataset(inputfile, chunks={})
     xlat = ds["XLAT"]
     xlong = ds["XLONG"]
     if res is None:
@@ -239,13 +247,20 @@ def remap_wgts(
     ds.close()
 
     griddes_file = griddes(xsize, ysize, minlon, minlat, res)
+
+    remap_wgt_file = f"remap_wgt{method}_{griddes_file}.nc"
+
     # remap to Lat-Lon
     if method == RemapMethod.nearestneighbor:
-        remap_wgt_file = cdo.gennn(griddes_file, input=inputfile)
+        remap_wgt_file = cdo.gennn(griddes_file, input=inputfile, output=remap_wgt_file)
     elif method == RemapMethod.bilinear:
-        remap_wgt_file = cdo.genbil(griddes_file, input=inputfile)
+        remap_wgt_file = cdo.genbil(
+            griddes_file, input=inputfile, output=remap_wgt_file
+        )
     elif method == RemapMethod.conservative:
-        remap_wgt_file = cdo.gencon(griddes_file, input=inputfile)
+        remap_wgt_file = cdo.gencon(
+            griddes_file, input=inputfile, output=remap_wgt_file
+        )
     else:
         raise ValueError(f"Invalid remap method: {method}")
     return griddes_file, remap_wgt_file
@@ -295,7 +310,7 @@ def get_time_as_dates(nc_file_path: str) -> list[str]:
     # Open the dataset in lazy loading mode
     with xr.open_dataset(nc_file_path, chunks={}) as ds:
         # Ensure the time variable exists in the dataset
-        return ds["Time"].dt.strftime("%Y-%m-%d").values.tolist()
+        return ds["Times"].dt.strftime("%Y-%m-%d").values.tolist()
 
 
 def get_cdoinput_seltimestep(file: str, weekday: WeekDay):
@@ -319,38 +334,6 @@ def get_cdoinput_seltimestep(file: str, weekday: WeekDay):
         raise ValueError("Failed to find start or end time step")
 
     return f" -seltimestep,{start_time_step}/{end_time_step}"
-
-
-@app.command()
-def main(
-    vname: Annotated[str, typer.Option(...)],
-    fcst_files_glob_str: Annotated[
-        str, typer.Option(..., help="Forecast files glob string")
-    ],
-    refcst_files_glob_str: Annotated[
-        str, typer.Option(..., help="Re-forecast files glob string")
-    ],
-):
-    config = get_config()
-
-    if vname not in config["fields"]:
-        return
-
-    config = config["fields"][vname]
-
-    # mkdir outout dir
-    Path("output").mkdir(parents=True, exist_ok=True)
-
-    fcst_files = glob.glob(fcst_files_glob_str)
-    refcst_files = glob.glob(refcst_files_glob_str)
-
-    # create a lat-lon griddes file by infering the nominal resolution from XLAT, XLONG
-    post_opr = get_cdoinput_preprocess(vname, config, fcst_files)
-
-    pre_opr = get_cdoinput_seltimestep(fcst_files[0], config.preprocess.week_start)
-
-    for stat in config.stat:
-        process(vname, pre_opr, post_opr, stat, fcst_files, refcst_files)
 
 
 def process(
@@ -379,7 +362,7 @@ def process(
             )
 
     for ens_stat_name, ens_stat_oprs in config.ens_stats.items():
-        if ens_stat_oprs[0].get_cdo_opr is None:
+        if ens_stat_oprs[0].get_cdo_opr(fcst_files) is None:
             raise NotImplementedError()
         process_ens_stat_cdo(
             vname,
@@ -437,19 +420,19 @@ def process_ens_stat_cdo(
 def get_cdoinput_preprocess(vname, config, fcst_files):
     if config.preprocess is None:
         return ""
-    iconfig = config.preprocess
-    remap_opr = get_cdoinput_remap(fcst_files, iconfig)
-    rename_opr = get_cdoinput_rename(vname, iconfig)
-    unit_conversion_opr = get_cdoinput_unit_conversion(vname, iconfig)
+    config = config.preprocess
+    remap_opr = get_cdoinput_remap(fcst_files[0], config)
+    rename_opr = get_cdoinput_rename(vname, config)
+    unit_conversion_opr = get_cdoinput_unit_conversion(vname, config)
     res = f"{unit_conversion_opr} {rename_opr} {remap_opr}"
     return res
 
 
 def get_cdoinput_remap(in_file, config):
-    if config["remap"] is None:
+    if config.remap is None:
         return ""
-    method = config["remap"]["method"]
-    res = config["remap"]["res"]
+    method = config.remap.method
+    res = config.remap.res
     griddes_file, remap_wgt_file = remap_wgts(in_file, res, method)
     return f" -remap,{griddes_file},{remap_wgt_file} "
 
@@ -467,23 +450,58 @@ def get_cdoinput_unit_conversion(vname, config):
 
     addc = config.unit_conversion.addc
     mulc = config.unit_conversion.mulc
-    units = config.unit_conversion.units
+    units = config.unit_conversion.to_units
     cdoOpt = f" -addc,{addc} -mulc,{mulc} "
     if units:
         cdoOpt = f" -setattribute,{vname}@units={units} {cdoOpt}"
     return cdoOpt
 
 
-def cdo_execute_parallel(inputs: list[str], outputfiles: list[str] = []) -> list[str]:
+def cdo_execute_parallel(inputs: list[str]) -> list[str]:
     # start cpu time
     stime = time.time()
     cpu_count = max(os.cpu_count() - 1, 1)
     nworkers = min(len(inputs), cpu_count)
-    threads_per_worker = int(cpu_count / nworkers)
+    threads_per_worker = min(int(cpu_count / nworkers), 4)
+    logger.info(f"nworkers: {nworkers}, threads_per_worker: {threads_per_worker}")
+    logger.info(f"cdo_execute_parallel inputs: {inputs}")
     with LocalCluster(
         n_workers=nworkers, threads_per_worker=threads_per_worker
     ) as cluster, Client(cluster) as client:
-        futures = client.map(cdo_execute, inputs, outputfiles)
+        futures = client.map(cdo_execute, inputs)
         output = client.gather(futures)
     logger.info(f"Time for cdo_execute_parallel: {time.time() - stime}")
     return output
+
+
+@app.command()
+def main(
+    vname: Annotated[str, typer.Argument(...)],
+    fcst_files_glob_str: Annotated[
+        str, typer.Argument(..., help="Forecast files glob string")
+    ],
+    refcst_files_glob_str: Annotated[
+        str, typer.Argument(..., help="Re-forecast files glob string")
+    ],
+):
+    config = get_config()
+
+    config = config.fields.get(vname, None)
+
+    if config is None:
+        logger.error(f"Could not find config for {vname}")
+        return
+
+    # mkdir outout dir
+    Path("output").mkdir(parents=True, exist_ok=True)
+
+    fcst_files = glob.glob(fcst_files_glob_str)
+    refcst_files = glob.glob(refcst_files_glob_str)
+
+    # create a lat-lon griddes file by infering the nominal resolution from XLAT, XLONG
+    post_opr = get_cdoinput_preprocess(vname, config, fcst_files)
+
+    pre_opr = get_cdoinput_seltimestep(fcst_files[0], config.preprocess.week_start)
+
+    for stat in config.stat:
+        process(vname, pre_opr, post_opr, stat, fcst_files, refcst_files)

@@ -44,44 +44,29 @@ fields:
     stat:
       - time_coarsen: null
         ens_stats:
-          pctl: *pctl_defaults
+          enspclt: *pctl_defaults
         file_type:
-          pctl: zarr
-
+          enspctl: zarr
       - time_coarsen: daymax
         ens_stats:
-          range: *range_defaults
-          prob_gtc: *temp_gtc
+          ensrange: *range_defaults
+          ensprob_gtc: *temp_gtc
         file_type:
-          range: zarr
-          prob_gtc: zarr
+          ensrange: zarr
+          ensprob_gtc: zarr
 
       - time_coarsen: daymin
         ens_stats:
-          range: *range_defaults
-          prob_ltc: *temp_ltc
+          ensrange: *range_defaults
+          ensprob_ltc: *temp_ltc
         file_type:
-          range: zarr
-          prob_ltc: zarr
+          ensrange: zarr
+          ensprob_ltc: zarr
 
       - time_coarsen: weekmean
         ens_stats:
-          median:
+          ensmedian:
             - opr: median
-          efi:
-            - opr: efi
-          sotp:
-            - opr: sotp
-          sotn:
-            - opr: sotn
-          fcstmembers:
-            - opr: members
-          rfmembers:
-            - opr: rfmembers
 
         file_type:
-          median: nc
-          efi: nc
-          sotp: nc
-          sotn: nc
-          ensmembers: zarr
+          ensmedian: nc

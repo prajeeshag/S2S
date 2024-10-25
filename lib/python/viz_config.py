@@ -43,16 +43,16 @@ class EnsStat(BaseModel):
             return f" -ensmean [ -gtc,{self.arg} : {files_str} ] "
         elif self.opr == EnsStatOpr.prob_ltc:
             return f" -ensmean [ -ltc,{self.arg} : {files_str} ] "
-        elif self.opr == [
+        elif self.opr in [
             EnsStatOpr.min,
             EnsStatOpr.max,
             EnsStatOpr.mean,
             EnsStatOpr.sum,
             EnsStatOpr.median,
         ]:
-            return f"-ens{self.opr.value} {files_str}"
+            return f"-ens{self.opr.value} [ {files_str} ]"
         else:
-            return None
+            None
 
 
 class RemapMethod(str, Enum):
@@ -218,18 +218,17 @@ class TimeStat(BaseModel):
 
     @property
     def reforecast_needed(self):
-        return any(
-            [
-                stat.opr
-                in [
-                    EnsStatOpr.rfmembers,
-                    EnsStatOpr.efi,
-                    EnsStatOpr.sotn,
-                    EnsStatOpr.sotp,
-                ]
-                for stat in self.ens_stats.values()
-            ]
-        )
+        reforecast_stats = [
+            EnsStatOpr.rfmembers,
+            EnsStatOpr.efi,
+            EnsStatOpr.sotn,
+            EnsStatOpr.sotp,
+        ]
+        for x in self.ens_stats.values():
+            for stat in x:
+                if stat.opr in reforecast_stats:
+                    return True
+        return False
 
     def get_ens_stat_coord_values(self, stat_name: str):
         ens_stat = self.ens_stats[stat_name]

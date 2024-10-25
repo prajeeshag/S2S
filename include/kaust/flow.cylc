@@ -43,7 +43,7 @@
         script = """
             export MAMBA_EXE='/scratch/athippp/iops/bin/micromamba'
             export MAMBA_ROOT_PREFIX='/scratch/athippp/iops/micromamba'
-            $MAMBA_EXE create -f $ETC_DIR/env.yaml -y
+            $MAMBA_EXE create -f $ETC_DIR/env.yaml -p /scratch/athippp/iops/micromamba/envs/operS2S  -y
         """
 
     [[installWrfWps]]
