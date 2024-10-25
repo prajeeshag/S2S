@@ -327,7 +327,7 @@ def get_cdoinput_seltimestep(file: str, weekday: WeekDay):
         if start_time_step is None and new_start_date == date:
             start_time_step = i + 1
         if end_time_step is None and end_date == date:
-            end_time_step = i + 1
+            end_time_step = i
             break
 
     if start_time_step is None or end_time_step is None:

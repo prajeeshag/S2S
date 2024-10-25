@@ -250,9 +250,9 @@
     [[merge_time<mem>]]
         inherit = MERGE_TIME, ENSMEMBER
 
-    [[ACC2TOTAL]]
+    [[ACC2RATE]]
         script = """
-        acc2rate.sh $input_dir/surface_d01_${varname}.nc $input_dir/surface_d01_T${varname}.nc
+        acc2rate.sh $input_dir/surface_d01_${varname}.nc $input_dir/surface_d01_${varname}_rate.nc
         """
         [[[environment]]]
             input_dir=$MEM_SHARE_DIR/merge_time
