@@ -1,4 +1,6 @@
 import datetime
+import glob
+import hashlib
 import logging
 import os
 import shutil
@@ -6,14 +8,22 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 import xarray as xr
-import yaml
 import zarr
 from cdo import Cdo
 from dask.distributed import Client, LocalCluster
+from viz_config import (
+    EnsStat,
+    EnsStatOpr,
+    FileType,
+    RemapMethod,
+    TimeStat,
+    WeekDay,
+    get_config,
+)
 
 # setup logger to use stdout
 logger = logging.getLogger(__name__)
@@ -61,41 +71,22 @@ def griddes(lonsize, latsize, slon, slat, resolution):
     return temp_file.name
 
 
-def cdo_execute(input, output):
+def create_hash(input_string: str) -> str:
+    return hashlib.sha256().update(input_string.encode("utf-8")).hexdigest()
+
+
+def cdo_execute(input, output=None):
+    if output is None:
+        output = create_hash(input)
     if Path(output).exists():
-        logger.info(f"{output} already exists; skipping")
+        logger.info(f"output for `cdo {input}` already exists; not recomputing")
         return output
-    logger.info(f"Processing: cdo {input} {output}")
+    logger.info(f"Processing: cdo {input} ")
     tmp = cdo.copy(input=input)
     Path(output).parent.mkdir(parents=True, exist_ok=True)
     shutil.move(tmp, output)
-    logger.info(f"Completed processing: cdo {input} {output}")
+    logger.info(f"Completed processing: cdo {input}")
     return output
-
-
-def process_rename_var(vname):
-    if vname not in CONFIG["fields"]:
-        return ""
-    rename = CONFIG["fields"][vname].get("rename_from", "")
-    if rename:
-        return f" -chname,{rename},{vname}"
-    return ""
-
-
-def process_unit_conversion(vname):
-    cdoOpt = ""
-    if vname not in CONFIG["fields"]:
-        unit_conversion = False
-    else:
-        unit_conversion = CONFIG["fields"][vname].get("unit_conversion", False)
-
-    if unit_conversion:
-        addc = CONFIG["fields"][vname].get("addc", 0)
-        mulc = CONFIG["fields"][vname].get("mulc", 1)
-        units = CONFIG["fields"][vname].get("units", "")
-        cdoOpt = f" -setattribute,{vname}@units={units} -addc,{addc} -mulc,{mulc}"
-
-    return cdoOpt
 
 
 def sort_by_coord(coord, files):
@@ -135,7 +126,13 @@ def get_member_coord(inputfiles: list[str]):
     return [int(f.split("/mem")[1].split("/")[0]) for f in inputfiles]
 
 
-def to_zarr(ncfiles: list[str], coord: list[int], dimname: str, output: str):
+def write_to_zarr(
+    ncfiles: list[str],
+    coord: list[int] | list[float] | list[str],
+    dimname: str,
+    output: str,
+):
+    output = f"{output}.zarr"
     # multiprocessing.set_start_method("fork", force=True)
     store = zarr.DirectoryStore(output)
 
@@ -147,28 +144,32 @@ def to_zarr(ncfiles: list[str], coord: list[int], dimname: str, output: str):
         ncfiles[0],
         chunks={"lat": 10, "lon": 10},
     )
-    ds = ds.expand_dims({dimname: len(ncfiles)}).chunk(
-        {dimname: 1, "lat": 10, "lon": 10}
-    )
-    ds = ds.assign_coords({dimname: coord})
 
-    ds.to_zarr(store, mode="w", compute=False)
-
-    len_files = len(ncfiles)
-    cpu_count = os.cpu_count()
-    nworkers = min(len(ncfiles), cpu_count)
-    threads_per_worker = int(cpu_count / nworkers)
-    with LocalCluster(
-        n_workers=nworkers, threads_per_worker=threads_per_worker
-    ) as cluster, Client(cluster) as client:
-        futures = client.map(
-            write_to_zarr,
-            [store] * len_files,
-            ncfiles,
-            list(range(len_files)),
-            [dimname] * len_files,
+    if len(coord) == 1:
+        ds.to_zarr(store, mode="w")
+    else:
+        ds = ds.expand_dims({dimname: len(ncfiles)}).chunk(
+            {dimname: 1, "lat": 10, "lon": 10}
         )
-        client.gather(futures)
+        ds = ds.assign_coords({dimname: coord})
+
+        ds.to_zarr(store, mode="w", compute=False)
+
+        len_files = len(ncfiles)
+        cpu_count = os.cpu_count()
+        nworkers = min(len(ncfiles), cpu_count)
+        threads_per_worker = int(cpu_count / nworkers)
+        with LocalCluster(
+            n_workers=nworkers, threads_per_worker=threads_per_worker
+        ) as cluster, Client(cluster) as client:
+            futures = client.map(
+                _write_to_zarr,
+                [store] * len_files,
+                ncfiles,
+                list(range(len_files)),
+                [dimname] * len_files,
+            )
+            client.gather(futures)
     logger.info(f"{output} created")
     to_zip(output, f"{output}.zip")
     logger.info(f"{output}.zip created")
@@ -177,7 +178,33 @@ def to_zarr(ncfiles: list[str], coord: list[int], dimname: str, output: str):
     logger.info(f"{output} removed")
 
 
-def write_to_zarr(zarr_store, nc_file, idx, dimname):
+def write_to_nc(
+    ncfiles: list[str],
+    coord: list[int] | list[float] | list[str],
+    dimname: str,
+    output: str,
+):
+    output = f"{output}.nc"
+
+    if len(coord) != len(ncfiles):
+        raise ValueError(
+            f" len(coord) ({len(coord)}) does not match number of files ({len(ncfiles)})"
+        )
+    if len(coord) == 1:
+        shutil.move(ncfiles[0], output)
+        logger.info(f"{output} created")
+    ds = xr.open_mfdataset(
+        ncfiles,
+        chunks={"lat": 10, "lon": 10},
+        combine="nested",
+        concat_dim=dimname,
+    )
+    ds = ds.assign_coords({dimname: coord})
+    ds.to_netcdf(output)
+    logger.info(f"{output} created")
+
+
+def _write_to_zarr(zarr_store, nc_file, idx, dimname):
     logger.info(f"Writing file: {nc_file} to zarr store")
     # Open the NetCDF file using xarray
     ds = xr.open_dataset(nc_file, chunks={"lat": 10, "lon": 10}).drop_vars(
@@ -193,26 +220,38 @@ def write_to_zarr(zarr_store, nc_file, idx, dimname):
     logger.info(f"Finished writing file: {nc_file} to zarr store")
 
 
-def remap_wgts(inputfiles):
-    ds = xr.open_dataset(inputfiles[0], chunks={"Time": 1})
+def remap_wgts(
+    inputfile,
+    res: float | None = None,
+    method: RemapMethod = RemapMethod.nearestneighbor,
+):
+    ds = xr.open_dataset(inputfile, chunks={"Time": 1})
     xlat = ds["XLAT"]
     xlong = ds["XLONG"]
-    res = xlat[1, 0].values - xlat[0, 0].values
-    minlat = xlat.min().values - res
-    maxlat = xlat.max().values + res
-    minlon = xlong.min().values - res
-    maxlon = xlong.max().values + res
+    if res is None:
+        res = xlat[1, 0].values - xlat[0, 0].values
+    minlat = xlat.min().values
+    maxlat = xlat.max().values
+    minlon = xlong.min().values
+    maxlon = xlong.max().values
     xsize = int((maxlon - minlon) / res)
     ysize = int((maxlat - minlat) / res)
     ds.close()
 
     griddes_file = griddes(xsize, ysize, minlon, minlat, res)
     # remap to Lat-Lon
-    remap_wgt_file = cdo.gennn(griddes_file, input=inputfiles[0])
+    if method == RemapMethod.nearestneighbor:
+        remap_wgt_file = cdo.gennn(griddes_file, input=inputfile)
+    elif method == RemapMethod.bilinear:
+        remap_wgt_file = cdo.genbil(griddes_file, input=inputfile)
+    elif method == RemapMethod.conservative:
+        remap_wgt_file = cdo.gencon(griddes_file, input=inputfile)
+    else:
+        raise ValueError(f"Invalid remap method: {method}")
     return griddes_file, remap_wgt_file
 
 
-def cal_skip_days(current_day, desired_start):
+def cal_weekstart_offset_days(current_day, desired_start):
     """
     Calculate the number of days to skip from current day to the desired start day.
 
@@ -227,7 +266,7 @@ def cal_skip_days(current_day, desired_start):
     return skip_days
 
 
-def get_weekday(date_string):
+def get_weekday(date_string, format="%Y-%m-%d"):
     """
     Get the weekday for a given date.
 
@@ -237,7 +276,7 @@ def get_weekday(date_string):
     Returns:
     int: The weekday (Monday=0, Sunday=6).
     """
-    date = datetime.datetime.strptime(date_string[0:10], "%Y-%m-%d")
+    date = datetime.datetime.strptime(date_string, format)
     return date.weekday()  # Monday=0, Sunday=6
 
 
@@ -252,221 +291,199 @@ def add_days_to_date(date_str: str, days: int) -> str:
     return new_date.strftime("%Y-%m-%d")
 
 
-def weekly_mean(inputfile, outputfile):
-    start_date = cdo.showtimestamp(input=f"-seltimestep,1 {inputfile}")[0][0:10]
-    end_date = cdo.showtimestamp(input=f"-seltimestep,-1 {inputfile}")[0][0:10]
-    weekday = get_weekday(start_date)
-    offset = cal_skip_days(weekday, CONFIG["week_start"])
-    start_date = add_days_to_date(start_date, offset)
-    input = f" -timselmean,7 -daymean -seldate,{start_date},{end_date} {inputfile}"
-    cdo_execute(input, outputfile)
+def get_time_as_dates(nc_file_path: str) -> list[str]:
+    # Open the dataset in lazy loading mode
+    with xr.open_dataset(nc_file_path, chunks={}) as ds:
+        # Ensure the time variable exists in the dataset
+        return ds["Time"].dt.strftime("%Y-%m-%d").values.tolist()
 
 
-def to_weekly(inputfiles):
-    outputfiles = []
-    for nc_file in inputfiles:
-        outputfile = f"weekly_mean_{Path(nc_file).name}"
-        outputfiles.append(outputfile)
-    cpu_count = os.cpu_count()
-    nworkers = min(len(inputfiles), cpu_count)
-    threads_per_worker = int(cpu_count / nworkers)
-    with LocalCluster(
-        n_workers=nworkers, threads_per_worker=threads_per_worker
-    ) as cluster, Client(cluster) as client:
-        futures = client.map(weekly_mean, inputfiles, outputfiles)
-        client.gather(futures)
-    return outputfiles
+def get_cdoinput_seltimestep(file: str, weekday: WeekDay):
+    # Open the NetCDF file using xarray
+    timestamps = get_time_as_dates(file)
+    start_weekday = get_weekday(timestamps[0])
+    offset_days = cal_weekstart_offset_days(start_weekday, weekday.value)
+    new_start_date = add_days_to_date(timestamps[0], offset_days)
+    end_date = add_days_to_date(new_start_date, 42)  # 6 weeks
 
+    start_time_step = None
+    end_time_step = None
+    for i, date in enumerate(timestamps):
+        if start_time_step is None and new_start_date == date:
+            start_time_step = i + 1
+        if end_time_step is None and end_date == date:
+            end_time_step = i + 1
+            break
 
-def daily(inputfile, outputfile, operator):
-    input = f"-day{operator} {inputfile}"
-    cdo_execute(input, outputfile)
+    if start_time_step is None or end_time_step is None:
+        raise ValueError("Failed to find start or end time step")
 
-
-def to_daily(inputfiles, operator):
-    outputfiles = []
-    for nc_file in inputfiles:
-        outputfile = f"daily{operator}_{Path(nc_file).name}"
-        outputfiles.append(outputfile)
-    cpu_count = os.cpu_count()
-    nworkers = min(len(inputfiles), cpu_count)
-    threads_per_worker = int(cpu_count / nworkers)
-    with LocalCluster(
-        n_workers=nworkers, threads_per_worker=threads_per_worker
-    ) as cluster, Client(cluster) as client:
-        futures = client.map(
-            daily, inputfiles, outputfiles, [operator] * len(inputfiles)
-        )
-        client.gather(futures)
-    return outputfiles
-
-
-def process_daily(vname, preprocfiles, operator):
-    try:
-        daily = CONFIG["fields"][vname][f"daily_{operator}"]
-    except KeyError:
-        return
-    if not daily:
-        return
-
-    daily_files = to_daily(preprocfiles, operator=operator)
-    ensstat_daily_files = to_ens_stat(
-        daily_files, ["min", "median", "max"], f"{vname}_daily_{operator}"
-    )
-
-    output = f"output/{vname}_daily_{operator}.zarr"
-    if Path(f"{output}.zip").exists():
-        logger.info(f"{output}.zip already exists; skipping")
-    else:
-        to_zarr(
-            ensstat_daily_files,
-            ["min", "median", "max"],
-            "stat",
-            output,
-        )
-
-    try:
-        thresholds = CONFIG["fields"][vname][f"daily_{operator}_thresholds"]
-    except KeyError:
-        thresholds = False
-
-    if thresholds:
-        if operator == "min":
-            to_ens_prob(daily_files, "ltc", thresholds, f"{vname}_daily_{operator}")
-        elif operator == "max":
-            to_ens_prob(daily_files, "gtc", thresholds, f"{vname}_daily_{operator}")
-
-
-def to_ens_prob(inputfiles, toperator, thresholds, vname):
-    cpu_count = os.cpu_count()
-    nworkers = min(len(thresholds), cpu_count)
-    threads_per_worker = int(cpu_count / nworkers)
-    with LocalCluster(
-        n_workers=nworkers, threads_per_worker=threads_per_worker
-    ) as cluster, Client(cluster) as client:
-        futures = client.map(
-            ens_prob,
-            [inputfiles] * len(thresholds),
-            [toperator] * len(thresholds),
-            thresholds,
-            [vname] * len(thresholds),
-        )
-        res = client.gather(futures)
-    logger.info(f"Processed: {res} for {thresholds}")
-    to_zarr(res, thresholds, "prob", f"output/{vname}_{toperator}_threshold.zarr")
-
-
-def ens_prob(input_files, operator, threshold, vname):
-    input_files = " ".join(input_files)
-    opr = f"-{operator},{threshold}"
-    opr_str = f"{operator}{threshold}"
-    output = f"{vname}_{opr_str}.nc"
-    logger.info(f"Processing: {output}")
-    input = f" -ensmean [ {opr} : {input_files} ] "
-    cdo_execute(input, output)
-    logger.info(f"Processed: {output}")
-    return output
-
-
-def process_weekly(vname, preprocfiles, operator):
-    try:
-        flag = CONFIG["fields"][vname][f"weekly_{operator}"]
-    except KeyError:
-        return
-    if not flag:
-        return
-    weekly_mean_files = to_weekly(preprocfiles)
-    ens_stat(weekly_mean_files, "median", f"output/{vname}_weekly_mean")
-
-
-def to_ens_stat(inputfiles, operators, vname):
-    cpu_count = os.cpu_count()
-    nworkers = min(len(operators), cpu_count)
-    threads_per_worker = int(cpu_count / nworkers)
-    with LocalCluster(
-        n_workers=nworkers, threads_per_worker=threads_per_worker
-    ) as cluster, Client(cluster) as client:
-        futures = client.map(
-            ens_stat,
-            [inputfiles] * len(operators),
-            operators,
-            [vname] * len(operators),
-        )
-        res = client.gather(futures)
-    return res
-
-
-def ens_stat(input_files, operator, vname):
-    input_files = " ".join(input_files)
-    opr_str = operator.replace(",", "")
-    output = f"{vname}_ens{opr_str}.nc"
-    logger.info(f"Processing: {output}")
-
-    input = f" -ens{operator} [ {input_files} ] "
-    cdo_execute(input, output)
-    logger.info(f"Processed: {output}")
-    return output
-
-
-def process_percentiles(vname, preprocfiles):
-    try:
-        pecentiles = CONFIG["fields"][vname].get("percentiles", [])
-    except KeyError:
-        return
-    if not pecentiles:
-        return
-    output = f"output/{vname}_enspctl.zarr"
-    if Path(f"{output}.zip").exists():
-        logger.info(f"{output}.zip already exists; skipping")
-    pctl = [f"pctl,{i}" for i in pecentiles]
-    ens_stat_files = to_ens_stat(preprocfiles, pctl, vname)
-    to_zarr(ens_stat_files, pecentiles, "pctl", output)
-
-
-def process_to_zarr(vname, preprocfiles, members):
-    try:
-        flag = CONFIG["fields"][vname]["to_zarr"]
-    except KeyError:
-        return
-    if not flag:
-        return
-    output = f"output/{vname}.zarr"
-    if Path(f"{output}.zip").exists():
-        logger.info(f"{output}.zip already exists; skipping")
-        return
-    stime = time.time()
-    to_zarr(preprocfiles, members, "member", output)
-    logger.info(f"Time for to_zarr: {time.time() - stime}")
+    return f" -seltimestep,{start_time_step}/{end_time_step}"
 
 
 @app.command()
 def main(
     vname: Annotated[str, typer.Option(...)],
-    inputfiles: Annotated[
-        list[str],
-        typer.Argument(help="WRF output file(s)"),
+    fcst_files_glob_str: Annotated[
+        str, typer.Option(..., help="Forecast files glob string")
+    ],
+    refcst_files_glob_str: Annotated[
+        str, typer.Option(..., help="Re-forecast files glob string")
     ],
 ):
+    config = get_config()
+
+    if vname not in config["fields"]:
+        return
+
+    config = config["fields"][vname]
+
     # mkdir outout dir
     Path("output").mkdir(parents=True, exist_ok=True)
 
-    members = get_member_coord(inputfiles)
-    members, inputfiles = sort_by_coord(members, inputfiles)
+    fcst_files = glob.glob(fcst_files_glob_str)
+    refcst_files = glob.glob(refcst_files_glob_str)
 
     # create a lat-lon griddes file by infering the nominal resolution from XLAT, XLONG
-    griddes_file, remap_wgt_file = remap_wgts(inputfiles)
-    cdoOpt = f"-remap,{griddes_file},{remap_wgt_file}"
+    post_opr = get_cdoinput_preprocess(vname, config, fcst_files)
 
-    cdoOpt = f"{process_rename_var(vname)} {cdoOpt}"
-    cdoOpt = f"{process_unit_conversion(vname)} {cdoOpt}"
-    preprocfiles = preproc(inputfiles, cdoOpt)
+    pre_opr = get_cdoinput_seltimestep(fcst_files[0], config.preprocess.week_start)
 
-    process_to_zarr(vname, preprocfiles, members)
+    for stat in config.stat:
+        process(vname, pre_opr, post_opr, stat, fcst_files, refcst_files)
 
-    process_percentiles(vname, preprocfiles)
 
-    process_weekly(vname, preprocfiles, "mean")
+def process(
+    vname: str,
+    pre_cdoinput: str,
+    post_cdoinput: str,
+    config: TimeStat,
+    fcst_files: list[str],
+    refcst_files: list[str],
+):
+    time_coarsen_cdoinput = ""
+    if config.time_coarsen is not None:
+        time_coarsen_cdoinput = config.time_coarsen.get_cdo_opr()
 
-    process_daily(vname, preprocfiles, "min")
-    process_daily(vname, preprocfiles, "max")
-    process_daily(vname, preprocfiles, "mean")
+    time_coarsen_name = config.time_coarsen.name if config.time_coarsen else ""
+
+    preprocess_opr = f"{post_cdoinput} {time_coarsen_cdoinput} {pre_cdoinput}"
+
+    if preprocess_opr.strip():
+        fcst_files = cdo_execute_parallel([f"{preprocess_opr} {f}" for f in fcst_files])
+
+        refcst_files = []
+        if config.reforecast_needed:
+            refcst_files = cdo_execute_parallel(
+                [f"{preprocess_opr} {f}" for f in refcst_files]
+            )
+
+    for ens_stat_name, ens_stat_oprs in config.ens_stats.items():
+        if ens_stat_oprs[0].get_cdo_opr is None:
+            raise NotImplementedError()
+        process_ens_stat_cdo(
+            vname,
+            time_coarsen_name,
+            ens_stat_name,
+            ens_stat_oprs,
+            config.get_ens_stat_coord_values(ens_stat_name),
+            fcst_files,
+            refcst_files,
+            config.file_type[ens_stat_name],
+        )
+
+
+def create_file_name(vname: str, time_coarsen_name: str, stat_name: str):
+    fname = f"output/{vname}"
+    if time_coarsen_name:
+        fname = f"{fname}_{time_coarsen_name}"
+    if stat_name:
+        fname = f"{fname}_{stat_name}"
+    return fname
+
+
+def process_ens_stat_cdo(
+    vname: str,
+    time_coarsen_name: str,
+    ens_stat_name: str,
+    ens_stat_oprs: list[EnsStat],
+    coord_values: list[Any],
+    fcst_files: list[str],
+    refcst_files: list[str],
+    file_type: FileType,
+):
+
+    cdo_inputs = []
+    for ens_stat in ens_stat_oprs:
+        cdo_inputs.append(ens_stat.get_cdo_opr(fcst_files))
+    files = cdo_execute_parallel(cdo_inputs)
+
+    if file_type in [FileType.zarr, FileType.zarr_and_nc]:
+        write_to_zarr(
+            files,
+            coord_values,
+            ens_stat_name,
+            create_file_name(vname, time_coarsen_name, ens_stat_name),
+        )
+    if file_type in [FileType.nc, FileType.zarr_and_nc]:
+        write_to_nc(
+            files,
+            coord_values,
+            ens_stat_name,
+            create_file_name(vname, time_coarsen_name, ens_stat_name),
+        )
+
+
+def get_cdoinput_preprocess(vname, config, fcst_files):
+    if config.preprocess is None:
+        return ""
+    iconfig = config.preprocess
+    remap_opr = get_cdoinput_remap(fcst_files, iconfig)
+    rename_opr = get_cdoinput_rename(vname, iconfig)
+    unit_conversion_opr = get_cdoinput_unit_conversion(vname, iconfig)
+    res = f"{unit_conversion_opr} {rename_opr} {remap_opr}"
+    return res
+
+
+def get_cdoinput_remap(in_file, config):
+    if config["remap"] is None:
+        return ""
+    method = config["remap"]["method"]
+    res = config["remap"]["res"]
+    griddes_file, remap_wgt_file = remap_wgts(in_file, res, method)
+    return f" -remap,{griddes_file},{remap_wgt_file} "
+
+
+def get_cdoinput_rename(vname, config):
+    if config.rename is None:
+        return ""
+    oldname = config.rename.from_
+    return f" -chname,{oldname},{vname}"
+
+
+def get_cdoinput_unit_conversion(vname, config):
+    if config.unit_conversion is None:
+        return ""
+
+    addc = config.unit_conversion.addc
+    mulc = config.unit_conversion.mulc
+    units = config.unit_conversion.units
+    cdoOpt = f" -addc,{addc} -mulc,{mulc} "
+    if units:
+        cdoOpt = f" -setattribute,{vname}@units={units} {cdoOpt}"
+    return cdoOpt
+
+
+def cdo_execute_parallel(inputs: list[str], outputfiles: list[str] = []) -> list[str]:
+    # start cpu time
+    stime = time.time()
+    cpu_count = max(os.cpu_count() - 1, 1)
+    nworkers = min(len(inputs), cpu_count)
+    threads_per_worker = int(cpu_count / nworkers)
+    with LocalCluster(
+        n_workers=nworkers, threads_per_worker=threads_per_worker
+    ) as cluster, Client(cluster) as client:
+        futures = client.map(cdo_execute, inputs, outputfiles)
+        output = client.gather(futures)
+    logger.info(f"Time for cdo_execute_parallel: {time.time() - stime}")
+    return output

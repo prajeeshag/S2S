@@ -1,39 +1,37 @@
 preprocess_defaults: &preprocess_defaults
   remap:
-    method: nearest
+    method: nn
     res: 0.04
 
 pctl_defaults: &pctl_defaults
-  - [pctl, 0]
-  - [pctl, 20]
-  - [pctl, 40]
-  - [pctl, 50]
-  - [pctl, 60]
-  - [pctl, 80]
-  - [pctl, 100]
+  - { opr: pctl, arg: 0 }
+  - { opr: pctl, arg: 20 }
+  - { opr: pctl, arg: 40 }
+  - { opr: pctl, arg: 50 }
+  - { opr: pctl, arg: 60 }
+  - { opr: pctl, arg: 80 }
+  - { opr: pctl, arg: 100 }
 
 range_defaults: &range_defaults
-  - [min, 0]
-  - [median, 0]
-  - [max, 0]
+  - opr: min
+  - opr: median
+  - opr: max
 
 temp_gtc: &temp_gtc
-  - [prob_gtc, 38]
-  - [prob_gtc, 40]
-  - [prob_gtc, 42]
-  - [prob_gtc, 44]
-  - [prob_gtc, 46]
-  - [prob_gtc, 48]
-  - [prob_gtc, 50]
+  - { opr: prob_gtc, arg: 37 }
+  - { opr: prob_gtc, arg: 40 }
+  - { opr: prob_gtc, arg: 43 }
+  - { opr: prob_gtc, arg: 46 }
+  - { opr: prob_gtc, arg: 49 }
+  - { opr: prob_gtc, arg: 52 }
 
 temp_ltc: &temp_ltc
-  - [prob_ltc, 0]
-  - [prob_ltc, 4]
-  - [prob_ltc, 6]
-  - [prob_ltc, 8]
-  - [prob_ltc, 10]
-  - [prob_ltc, 12]
-  - [prob_ltc, 14]
+  - { opr: prob_ltc, arg: 0 }
+  - { opr: prob_ltc, arg: 3 }
+  - { opr: prob_ltc, arg: 6 }
+  - { opr: prob_ltc, arg: 9 }
+  - { opr: prob_ltc, arg: 12 }
+  - { opr: prob_ltc, arg: 15 }
 
 fields:
   T2:
@@ -41,35 +39,49 @@ fields:
       <<: *preprocess_defaults
       unit_conversion:
         addc: -273.15
-        units: "degC"
+        units: degC
+
     stat:
       - time_coarsen: null
         ens_stats:
           pctl: *pctl_defaults
         file_type:
-          pctl: "zarr"
+          pctl: zarr
 
       - time_coarsen: daymax
         ens_stats:
           range: *range_defaults
           prob_gtc: *temp_gtc
         file_type:
-          range: "zarr"
-          prob_gtc: "zarr"
+          range: zarr
+          prob_gtc: zarr
 
       - time_coarsen: daymin
         ens_stats:
           range: *range_defaults
           prob_ltc: *temp_ltc
         file_type:
-          range: "zarr"
-          prob_ltc: "zarr"
+          range: zarr
+          prob_ltc: zarr
 
       - time_coarsen: weekmean
         ens_stats:
           median:
-            - ["median", 0]
-        file_type:
-          median: "nc"
+            - opr: median
+          efi:
+            - opr: efi
+          sotp:
+            - opr: sotp
+          sotn:
+            - opr: sotn
+          fcstmembers:
+            - opr: members
+          rfmembers:
+            - opr: rfmembers
 
-week_start: 0 # 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun
+        file_type:
+          median: nc
+          efi: nc
+          sotp: nc
+          sotn: nc
+          ensmembers: zarr
