@@ -18,7 +18,7 @@
 | 6. |  Cumulative distribution function | T2_weekly.zarr.zip, reforecast/T2_weekly.zarr.zip, s2s.get_cdf()[s2s.py] | :heavy_check_mark: | 
 | 7. |  Weekly spatial (Extreme Forecast Index) | T2_weekly_mean_[efi,sotp,sotn].nc | :heavy_check_mark: | 
 
-Data Path: kw61469:/home/pammirp/data/ncm/subseasonal/temperature/stage
+Data Path: kw61469:/home/athippp/data/ncm/subseasonal/temperature/stage
 
 ## Rainfall [Refer Slide-2]
 | No. | Description | Files | Data Status | Viz Status |
@@ -32,7 +32,7 @@ Data Path: kw61469:/home/pammirp/data/ncm/subseasonal/temperature/stage
 | 7. | Cumulative distribution function | RAIN_weekly.zarr.zip, reforecast/RAIN_weekly.zarr.zip, s2s.get_cdf()[s2s.py] | :heavy_check_mark: | 
 | 8. | Weekly spatial (Extreme Forecast Index) | RAIN_weekly_mean_[efi,sotp,sotn].nc | :heavy_check_mark: | 
 
-Data Path: kw61469:/home/pammirp/data/ncm/subseasonal/rainfall/stage
+Data Path: kw61469:/home/athippp/data/ncm/subseasonal/rainfall/stage
 
 # Python Code
 - s2s.py
