@@ -17,6 +17,30 @@ range_defaults: &range_defaults
   - opr: median
   - opr: max
 
+weekrain_gtc: &weekrain_gtc
+  - { opr: prob_gtc, arg: 1 }
+  - { opr: prob_gtc, arg: 5 }
+  - { opr: prob_gtc, arg: 10 }
+  - { opr: prob_gtc, arg: 20 }
+  - { opr: prob_gtc, arg: 30 }
+  - { opr: prob_gtc, arg: 50 }
+
+rh2_gtc: &rh2_gtc
+  - { opr: prob_gtc, arg: 70 }
+  - { opr: prob_gtc, arg: 75 }
+  - { opr: prob_gtc, arg: 80 }
+  - { opr: prob_gtc, arg: 85 }
+  - { opr: prob_gtc, arg: 90 }
+  - { opr: prob_gtc, arg: 95 }
+
+rh2_ltc: &rh2_ltc
+  - { opr: prob_ltc, arg: 35 }
+  - { opr: prob_ltc, arg: 30 }
+  - { opr: prob_ltc, arg: 25 }
+  - { opr: prob_ltc, arg: 20 }
+  - { opr: prob_ltc, arg: 15 }
+  - { opr: prob_ltc, arg: 10 }
+
 temp_gtc: &temp_gtc
   - { opr: prob_gtc, arg: 37 }
   - { opr: prob_gtc, arg: 40 }
@@ -34,6 +58,51 @@ temp_ltc: &temp_ltc
   - { opr: prob_ltc, arg: 15 }
 
 fields:
+  RH2:
+    preprocess:
+      <<: *preprocess_defaults
+      unit_conversion:
+        units: "%"
+
+    stat:
+      - time_coarsen: weekmean
+        ens_stats:
+          efi:
+            - opr: efi
+          ensmembers:
+            - opr: members
+          ensmembers_rf:
+            - opr: rfmembers
+          ensmedian:
+            - opr: median
+        file_type:
+          ensmedian: nc
+          efi: nc
+          ensmembers: zarr
+          ensmembers_rf: zarr
+
+      - time_coarsen: null
+        ens_stats:
+          enspctl: *pctl_defaults
+        file_type:
+          enspctl: zarr
+
+      - time_coarsen: daymax
+        ens_stats:
+          ensrange: *range_defaults
+          ensprob_gtc: *rh2_gtc
+        file_type:
+          ensrange: zarr
+          ensprob_gtc: zarr
+
+      - time_coarsen: daymin
+        ens_stats:
+          ensrange: *range_defaults
+          ensprob_ltc: *rh2_ltc
+        file_type:
+          ensrange: zarr
+          ensprob_ltc: zarr
+
   T2:
     preprocess:
       <<: *preprocess_defaults
@@ -42,11 +111,28 @@ fields:
         units: degC
 
     stat:
+      - time_coarsen: weekmean
+        ens_stats:
+          efi:
+            - opr: efi
+          ensmembers:
+            - opr: members
+          ensmembers_rf:
+            - opr: rfmembers
+          ensmedian:
+            - opr: median
+        file_type:
+          ensmedian: nc
+          efi: nc
+          ensmembers: zarr
+          ensmembers_rf: zarr
+
       - time_coarsen: null
         ens_stats:
-          enspclt: *pctl_defaults
+          enspctl: *pctl_defaults
         file_type:
           enspctl: zarr
+
       - time_coarsen: daymax
         ens_stats:
           ensrange: *range_defaults
@@ -63,10 +149,36 @@ fields:
           ensrange: zarr
           ensprob_ltc: zarr
 
-      - time_coarsen: weekmean
+  Rainfall:
+    preprocess:
+      <<: *preprocess_defaults
+      unit_conversion:
+        mulc: 3600
+        units: mm
+
+    stat:
+      - time_coarsen: weeksum
         ens_stats:
+          efi:
+            - opr: efi
+          ensmembers:
+            - opr: members
+          ensmembers_rf:
+            - opr: rfmembers
           ensmedian:
             - opr: median
-
+          ensprob_gtc: *weekrain_gtc
+          ensrange: *range_defaults
         file_type:
+          efi: nc
+          ensmembers: zarr
+          ensmembers_rf: zarr
           ensmedian: nc
+          ensprob_gtc: zarr
+          ensrange: zarr
+
+      - time_coarsen: daycumsum
+        ens_stats:
+          ensrange: *range_defaults
+        file_type:
+          ensrange: zarr

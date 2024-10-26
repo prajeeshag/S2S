@@ -117,18 +117,22 @@
             nproc_x={{ nproc_x }}
             nproc_y={{ nproc_y }}
 
-    [[UNGRIB, METGRID, GET_FORCING, MERGE_TIME, ACC2RATE, TOTALRAIN, WEEKLY_MEAN, REMAP2LL, ens_median, ens_pctl, ens_thresh]]
+    [[UNGRIB, METGRID, GET_FORCING, MERGE_TIME]]
         execution time limit = PT3H
         [[[directives]]]
             --account={{projectid}}
-            --nodes = 1
             --ntasks = 1
-            --partition=shared
+            # --partition=shared
             --mem=8G
 
-    [[viz<vizfld>]]
+    [[viz<vizfld>, SUBMIT_BATCH]]
         execution time limit = PT3H
         [[[directives]]]
             --account={{projectid}}
             --nodes = 1
-            --ntasks = {{ cpuPerNode }}
+            --ntasks = {{cpuPerNode}}
+        [[[environment]]]
+            NTASKS={{cpuPerNode}}
+
+    [[ACC2RATE, RH2, RAIN]]
+        platform=shaheen_login

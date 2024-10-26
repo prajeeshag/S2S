@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Annotated
 
 import yaml
-from pydantic import AfterValidator, BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field, model_validator
 
 # setup logger to use stdout
 logger = logging.getLogger(__name__)
@@ -24,8 +24,6 @@ class EnsStatOpr(str, Enum):
     pctl = "pctl"
     prob_ltc = "prob_ltc"
     prob_gtc = "prob_gtc"
-    sotn = "sotn"
-    sotp = "sotp"
     efi = "efi"
     members = "members"
     rfmembers = "rfmembers"
@@ -64,6 +62,7 @@ class RemapMethod(str, Enum):
 class TimeCoarsen(str, Enum):
     daymean = "daymean"
     daysum = "daysum"
+    daycumsum = "daycumsum"
     daymin = "daymin"
     daymax = "daymax"
     weekmean = "weekmean"
@@ -76,6 +75,8 @@ class TimeCoarsen(str, Enum):
             return "-daymean"
         elif self == TimeCoarsen.daysum:
             return "-daysum"
+        elif self == TimeCoarsen.daycumsum:
+            return "-timcumsum -daysum"
         elif self == TimeCoarsen.daymin:
             return "-daymin"
         elif self == TimeCoarsen.daymax:
@@ -84,6 +85,8 @@ class TimeCoarsen(str, Enum):
             return "-timselmean,7 -daymean"
         elif self == TimeCoarsen.weeksum:
             return "-timselsum,7 -daysum"
+        elif self == TimeCoarsen.weekcumsum:
+            return "-timcumsum -timselsum,7 -daysum"
         elif self == TimeCoarsen.weekmean_daymax:
             return "-timselmean,7 -daymax"
         elif self == TimeCoarsen.weekmean_daymin:
@@ -170,6 +173,7 @@ def ens_stat_list_validator(v: list[EnsStat]):
         EnsStatOpr.prob_gtc,
         EnsStatOpr.members,
         EnsStatOpr.rfmembers,
+        EnsStatOpr.efi,
     ]:
         if opr in oprs_set:
             raise ValueError(
@@ -177,9 +181,17 @@ def ens_stat_list_validator(v: list[EnsStat]):
             )
 
     for opr in oprs_set:
-        if opr in [EnsStatOpr.members, EnsStatOpr.rfmembers] and len(v) > 1:
+        if (
+            opr
+            in [
+                EnsStatOpr.members,
+                EnsStatOpr.rfmembers,
+                EnsStatOpr.efi,
+            ]
+            and len(v) > 1
+        ):
             raise ValueError(
-                "Invalid ens_stat: for operators 'members' and 'rfmembers' only one operator is allowed"
+                "Invalid ens_stat: for operators 'members', 'rfmembers', 'efi' only one operator is allowed"
             )
 
     allowed_groups = [
@@ -189,11 +201,6 @@ def ens_stat_list_validator(v: list[EnsStat]):
             EnsStatOpr.mean,
             EnsStatOpr.sum,
             EnsStatOpr.median,
-        ],
-        [
-            EnsStatOpr.efi,
-            EnsStatOpr.sotn,
-            EnsStatOpr.sotp,
         ],
     ]
 
@@ -216,13 +223,29 @@ class TimeStat(BaseModel):
     ]
     file_type: dict[str, FileType]
 
+    @model_validator(mode="after")
+    def check_ens_stats_keys_in_file_type(self):
+        ens_stats_keys = set(self.ens_stats.keys())
+        file_type_keys = set(self.file_type.keys())
+
+        if not ens_stats_keys.issubset(file_type_keys):
+            missing_keys = ens_stats_keys - file_type_keys
+            raise ValueError(
+                f"The following keys in 'ens_stats' are missing in 'file_type': {missing_keys}"
+            )
+        return self
+
+    def is_zarr(self, stat_name: str):
+        return self.file_type[stat_name] in [FileType.zarr, FileType.zarr_and_nc]
+
+    def is_nc(self, stat_name: str):
+        return self.file_type[stat_name] in [FileType.nc, FileType.zarr_and_nc]
+
     @property
     def reforecast_needed(self):
         reforecast_stats = [
             EnsStatOpr.rfmembers,
             EnsStatOpr.efi,
-            EnsStatOpr.sotn,
-            EnsStatOpr.sotp,
         ]
         for x in self.ens_stats.values():
             for stat in x:

@@ -1,9 +1,9 @@
 #!Jinja2
-{% from 'site.cylc' import initialCyclePoint, NMEMBERS, cycle, FCSTDURATION, SITE, REFORECAST, FORCING_DATA_DIR, FORECAST_DATE, finalCyclePoint %}
+{% from 'site.cylc' import initialCyclePoint, HMEMBERS, HYEARS, FMEMBERS, cycle, FCSTDURATION, SITE, FORCING_DATA_DIR, finalCyclePoint %}
 
 {% if graph is defined %}
-    # For cylc graph set NMEMBERS = 2
-    {% set NMEMBERS=2 %}
+    # For cylc graph set FMEMBERS = 2
+    {% set FMEMBERS=2 %}
 {% endif %}
 
 [scheduler]
@@ -11,9 +11,11 @@
     
 
 [task parameters]
-    mem = 0..{{ NMEMBERS - 1 }}
+    mem = 0..{{ FMEMBERS - 1 }}
+    memh = 0..{{ HMEMBERS - 1 }}
+    rf = 1..{{ HYEARS }}
     acc2rate = RAINC, RAINNC
-    vizfld = T2
+    vizfld = T2, RH2, Rainfall
 
 [scheduling]
     initial cycle point = {{ initialCyclePoint }}
@@ -23,6 +25,9 @@
         [[[main_queue]]]
             limit = 120  
             members = WRF
+        [[[batching_queue]]]
+            limit = 30
+            members = ACC2RATE, RAIN, RH2
 
     [[graph]]
         R1 = """
@@ -32,20 +37,23 @@
         """
 
         {{cycle}} = """
-            get_forcing<mem> => ungrib<mem>
-            installWrfWps[^] => ungrib<mem>
-            ungrib<mem> => metgrid<mem>
-            metgrid<mem> => real<mem>
-            real<mem> => wrf<mem>
-            wrf<mem> => merge_time<mem>
-            installCondaPkgs[^] => merge_time<mem>
-            merge_time<mem> => acc2rate<mem><acc2rate>
-            acc2rate<mem><acc2rate> => totalrain<mem>
+{% set members = '_F<mem>', '<rf><memh>' %}
+{% for member in members %}
+            installCondaPkgs[^] => get_forcing{{member}}
+            get_forcing{{member}} & installWrfWps[^] => ungrib{{member}}
+            ungrib{{member}} => metgrid{{member}} => real{{member}} => wrf{{member}}
+            wrf{{member}} => merge_time{{member}} => acc2rate{{member}}<acc2rate> => submit_acc2rate<acc2rate>
+            submit_acc2rate_RAINC & submit_acc2rate_RAINNC => rain{{member}} => submit_rain
+            merge_time{{member}} => rh2{{member}} => submit_rh2
 
             #Visualization
-            totalrain<mem> & install7z[^] => viz<vizfld>
+            merge_time{{member}} & install7z[^] & installCondaPkgs[^] => viz<vizfld>
+            submit_rain => viz_Rainfall
+            submit_rh2 => viz_RH2
 
-            merge_time<mem> => clean_up<mem>
+            # Cleanup Intermediate files
+            merge_time{{member}} => clean_up{{member}}
+{% endfor %}
         """
 
 [runtime]
@@ -59,26 +67,14 @@
             WPS_DIR=** site specific **
             WRF_DIR=** site specific **
             CYCLE_DIR=${CYLC_WORKFLOW_WORK_DIR}/${CYLC_TASK_CYCLE_POINT}
-            SHARE_DIR=${CYLC_WORKFLOW_SHARE_DIR}/${CYLC_TASK_CYCLE_POINT}
+            CYCLE_SHARE_DIR=${CYLC_WORKFLOW_SHARE_DIR}/${CYLC_TASK_CYCLE_POINT}
             ETC_DIR=${CYLC_WORKFLOW_RUN_DIR}/etc
             FIX_DIR=${CYLC_WORKFLOW_RUN_DIR}/fix
             FCST_START_TIME=${CYLC_TASK_CYCLE_POINT}
-            FCST_END_TIME=$(isodatetime ${CYLC_TASK_CYCLE_POINT} --offset={{ FCSTDURATION }})
 
-            FORECAST_DATE={{FORECAST_DATE}}
-            iyyyy=${FORECAST_DATE:0:4}
-            imm=${FORECAST_DATE:5:2}
-            idd=${FORECAST_DATE:8:2}
-
-            syyyy=${FCST_START_TIME:0:4}
-            smm=${FCST_START_TIME:4:2}
-            sdd=${FCST_START_TIME:6:2}
-            shh=${FCST_START_TIME:9:2}
-
-            eyyyy=${FCST_END_TIME:0:4}
-            emm=${FCST_END_TIME:4:2}
-            edd=${FCST_END_TIME:6:2}
-            ehh=${FCST_END_TIME:9:2}
+            iyyyy=${FCST_START_TIME:0:4}
+            imm=${FCST_START_TIME:4:2}
+            idd=${FCST_START_TIME:6:2}
 
             {% if test %}
                 GEO_EM_FILE=$FIX_DIR/geo_em.d01.nc_S2S_test
@@ -94,50 +90,54 @@
             tar -xvf 7z2408-linux-x64.tar.xz 
         """
 
-    [[ENSMEMBER]]
+    [[FORECAST_MEMBER]]
         [[[environment]]]
+            SHARE_DIR=${CYCLE_SHARE_DIR}/F
             memN=$CYLC_TASK_PARAM_mem
-            MEM_SHARE_DIR=${SHARE_DIR}/mem${CYLC_TASK_PARAM_mem}
+            MEM_SHARE_DIR=${SHARE_DIR}/mem${memN}
+            syyyy=$iyyyy
+
+    [[REFORECAST_MEMBER]]
+        [[[environment]]]
+            memN=$CYLC_TASK_PARAM_memh
+            rfN=$CYLC_TASK_PARAM_rf
+            SHARE_DIR=${CYCLE_SHARE_DIR}/H/rf${rfN}
+            MEM_SHARE_DIR=${SHARE_DIR}/mem${memN}
+            syyyy=$(( $iyyyy - $rfN ))
 
     [[GET_FORCING]]
-        pre-script = """
-            rm -rf *
-        """
         script = """
-            get_forcing.sh -i $input_data -m $memN -o ungrib_input.grib --year $syyyy $lsm_input
-        """
-        post-script = """
+            rm -rf *
             mkdir -p $MEM_SHARE_DIR
+            get_forcing.sh -i $input_data -m $memN -o ungrib_input.grib --year $syyyy $lsm_input
             mv ungrib_input.grib $MEM_SHARE_DIR
             rm -rf *
         """
-    [[[environment]]]
-        {% if REFORECAST %}
+
+    [[get_forcing_F<mem>]]
+        inherit = GET_FORCING, FORECAST_MEMBER
+        [[[environment]]]
+            input_data={{FORCING_DATA_DIR}}/A1F${iyyyy}${imm}${idd}/${iyyyy}${imm}${idd}.grb
+            lsm_input=""
+
+    [[get_forcing<rf><memh>]]
+        inherit = GET_FORCING, REFORECAST_MEMBER
+        [[[environment]]]
             input_data={{FORCING_DATA_DIR}}/A1H${iyyyy}${imm}${idd}/${iyyyy}${imm}${idd}.grb
             lsm_input="--lsminput {{FORCING_DATA_DIR}}/A1F${iyyyy}${imm}${idd}/${iyyyy}${imm}${idd}.grb"
-        {% else %}
-            input_data={{FORCING_DATA_DIR}}/A1F${syyyy}${smm}${sdd}/${syyyy}${smm}${sdd}.grb
-            lsm_input=""
-        {% endif %}
-
-    [[get_forcing<mem>]]
-        inherit = GET_FORCING, ENSMEMBER
 
 
     [[UNGRIB]]
-        pre-script = """
+        script = """
             rm -rf *
+            mkdir -p $MEM_SHARE_DIR/metgrid_inputs
             envsub $ETC_DIR/namelist.wps namelist.wps
             envsub $ETC_DIR/Vtable Vtable
             ln_safe "$ungrib_dir" .
             $link_grib $MEM_SHARE_DIR/ungrib_input.grib .
-        """
-        script = """
             ./ungrib/ungrib.exe
+            cat ungrib.log
             grep "Successful completion" ungrib.log
-        """
-        post-script = """
-            mkdir -p $MEM_SHARE_DIR/metgrid_inputs
             mv FILE* $MEM_SHARE_DIR/metgrid_inputs
             rm -rf *
         """
@@ -145,12 +145,15 @@
             ungrib_dir=$WPS_DIR/ungrib
             link_grib=$WPS_DIR/link_grib.csh
 
-    [[ungrib<mem>]]
-        inherit = UNGRIB, ENSMEMBER
+    [[ungrib_F<mem>]]
+        inherit = UNGRIB, FORECAST_MEMBER
+    [[ungrib<rf><memh>]]
+        inherit = UNGRIB, REFORECAST_MEMBER
 
     [[METGRID]]
-        pre-script = """
+        script = """
             rm -rf *
+            mkdir -p $MEM_SHARE_DIR/real_inputs
             envsub $ETC_DIR/namelist.wps namelist.wps
             mkdir metgrid 
 
@@ -159,13 +162,8 @@
 
             ln -sf $MEM_SHARE_DIR/metgrid_inputs/* .
             ln_safe $GEO_EM_FILE geo_em.d01.nc
-        """
-        script = """
             $run_cmd $metgrid_dir/metgrid.exe
             grep "Successful completion" metgrid.log
-        """
-        post-script = """
-            mkdir -p $MEM_SHARE_DIR/real_inputs
             mv met_em* $MEM_SHARE_DIR/real_inputs
             rm -rf *
         """
@@ -173,8 +171,10 @@
             metgrid_dir=$WPS_DIR/metgrid
             run_cmd = ** site specific **
 
-    [[metgrid<mem>]]
-        inherit = METGRID, ENSMEMBER
+    [[metgrid_F<mem>]]
+        inherit = METGRID, FORECAST_MEMBER
+    [[metgrid<rf><memh>]]
+        inherit = METGRID, REFORECAST_MEMBER
 
     [[NAMELIST_INPUT]]
         [[[environment]]]
@@ -182,23 +182,18 @@
 
     [[REAL]]
         inherit = None, NAMELIST_INPUT
-        pre-script = """
+        script = """
             rm -rf *
+            mkdir -p $MEM_SHARE_DIR/wrf_input
             ln -sf $MEM_SHARE_DIR/real_inputs/* .
             # get the grid info from geo_em_file
             source grid_info.sh $GEO_EM_FILE
             envsub $ETC_DIR/namelist.input namelist.input
             envsub $ETC_DIR/iofields.txt iofields.txt 
-        """
-
-        script = "$run_cmd $real_exe"
-
-        post-script = """
-            mkdir -p $MEM_SHARE_DIR/wrf_input
+            $run_cmd $real_exe
             mv wrf*_d?? $MEM_SHARE_DIR/wrf_input
             rm -rf *
         """
-
         [[[environment]]]
             nproc_x=-1
             nproc_y=-1
@@ -207,13 +202,16 @@
             real_exe=$WRF_DIR/main/real.exe
             run_cmd = ** site specific **
 
-    [[real<mem>]]
-        inherit = REAL, ENSMEMBER
+    [[real_F<mem>]]
+        inherit = REAL, FORECAST_MEMBER
+    [[real<rf><memh>]]
+        inherit = REAL, REFORECAST_MEMBER
 
     [[WRF]]
         inherit = None, NAMELIST_INPUT
-        pre-script = """
+        script = """
             rm -rf *
+            mkdir -p $MEM_SHARE_DIR/wrf_out
             cp -f $em_real_dir/* .
             ln -sf $MEM_SHARE_DIR/wrf_input/* .
 
@@ -221,12 +219,8 @@
             source grid_info.sh $GEO_EM_FILE
             envsub $ETC_DIR/namelist.input namelist.input
             envsub $ETC_DIR/iofields.txt iofields.txt 
-        """
+            $run_cmd $wrf_exe
 
-        script = "$run_cmd $wrf_exe"
-
-        post-script = """
-            mkdir -p $MEM_SHARE_DIR/wrf_out
             mv *_d??_????-??-??_* $MEM_SHARE_DIR/wrf_out
             rm -rf *
         """
@@ -235,8 +229,10 @@
             wrf_exe=$WRF_DIR/main/wrf.exe
             run_cmd = ** site specific ** # run command: e.g. mpirun -n 4
 
-    [[wrf<mem>]]
-        inherit = WRF, ENSMEMBER
+    [[wrf_F<mem>]]
+        inherit = WRF, FORECAST_MEMBER
+    [[wrf<rf><memh>]]
+        inherit = WRF, REFORECAST_MEMBER
 
     [[MERGE_TIME]]
         script = """
@@ -247,30 +243,91 @@
             input_dir=$MEM_SHARE_DIR/wrf_out
             output_dir=$MEM_SHARE_DIR/merge_time
     
-    [[merge_time<mem>]]
-        inherit = MERGE_TIME, ENSMEMBER
+    [[merge_time_F<mem>]]
+        inherit = MERGE_TIME, FORECAST_MEMBER
+    [[merge_time<rf><memh>]]
+        inherit = MERGE_TIME, REFORECAST_MEMBER
+
+    [[SUBMIT_BATCH]]
+        script = """
+            rm -rf *
+            for script in $CYCLE_SHARE_DIR/$scripts_dir/*.sh; do
+                echo "bash $script && rm $script" >> command.lst
+            done
+            parallel --jobs ${NTASKS} < command.lst
+        """
+        [[[environment]]]
+            scripts_dir=
 
     [[ACC2RATE]]
         script = """
-        acc2rate.sh $input_dir/surface_d01_${varname}.nc $input_dir/surface_d01_${varname}_rate.nc
+        scriptsdir=$CYCLE_SHARE_DIR/submit_acc2rate_${varname}/
+        mkdir -p $scriptsdir
+        jobscript=$scriptsdir/${CYLC_TASK_NAME}.sh
+        echo "acc2rate.sh $input_dir/surface_d01_${varname}.nc $input_dir/surface_d01_${varname}_rate.nc" > $jobscript
+        chmod +x $jobscript
         """
         [[[environment]]]
             input_dir=$MEM_SHARE_DIR/merge_time
             varname=$CYLC_TASK_PARAM_acc2rate
+    [[acc2rate_F<mem><acc2rate>]]
+        inherit = ACC2RATE, FORECAST_MEMBER
+    [[acc2rate<rf><memh><acc2rate>]]
+        inherit = ACC2RATE, REFORECAST_MEMBER
     
-    [[acc2rate<mem><acc2rate>]]
-        inherit = ACC2RATE, ENSMEMBER
+    [[submit_acc2rate<acc2rate>]]
+        inherit = None, SUBMIT_BATCH
+        [[[environment]]]
+            varname=$CYLC_TASK_PARAM_acc2rate
+            scripts_dir=submit_acc2rate_${varname}
 
-    [[TOTALRAIN]]
+    [[RH2]]
         script = """
-        set -x
-        cdo -add $input_dir/surface_d01_RAINC_rate.nc $input_dir/surface_d01_RAINNC_rate.nc $input_dir/surface_d01_RAIN_rate.nc
+            scriptsdir=$CYCLE_SHARE_DIR/submit_rh2/
+            mkdir -p $scriptsdir
+            jobscript=$scriptsdir/${CYLC_TASK_NAME}.sh
+            # RH=0.263*PSFC*Q2/exp(17.67*(T2-273.15)/(T2-29.65))
+            echo "cdo -setname,RH2 -div [ -mulc,0.263 -mul $PSFC $Q2 -exp [ -div [ -mulc,17.67 -subc,273.15 $T2 -subc,29.65 $T2 ] ] ] $RH" > $jobscript
+            chmod +x $jobscript
+        """
+        [[[environment]]]
+            input_dir=$MEM_SHARE_DIR/merge_time
+            PSFC=$input_dir/surface_d01_PSFC.nc
+            T2=$input_dir/surface_d01_T2.nc
+            Q2=$input_dir/surface_d01_Q2.nc
+            RH=$input_dir/surface_d01_RH2.nc
+    [[rh2_F<mem>]]
+        inherit = RH2, FORECAST_MEMBER
+    [[rh2<rf><memh>]]
+        inherit = RH2, REFORECAST_MEMBER
+    [[submit_rh2]]
+        inherit = None, SUBMIT_BATCH
+        [[[environment]]]
+            scripts_dir=submit_rh2
+    
+    [[RAIN]]
+        script = """
+            set -x
+            scriptsdir=$CYCLE_SHARE_DIR/submit_rain/
+            mkdir -p $scriptsdir
+            jobscript=$scriptsdir/${CYLC_TASK_NAME}.sh
+
+            echo  "cdo -setname,RAIN_rate -add $input_dir/surface_d01_RAINC_rate.nc " \
+                "$input_dir/surface_d01_RAINNC_rate.nc " \
+                "$input_dir/surface_d01_RAIN_rate.nc "  > $jobscript
         """
         [[[environment]]]
             input_dir=$MEM_SHARE_DIR/merge_time
     
-    [[totalrain<mem>]]
-        inherit = TOTALRAIN, ENSMEMBER
+    [[rain_F<mem>]]
+        inherit = RAIN, FORECAST_MEMBER
+    [[rain<rf><memh>]]
+        inherit = RAIN, REFORECAST_MEMBER
+
+    [[submit_rain]]
+        inherit = None, SUBMIT_BATCH
+        [[[environment]]]
+            scripts_dir=submit_rain
 
     [[CLEAN_UP]]
         script = """
@@ -280,14 +337,19 @@
         [[[environment]]]
             input_dir=$MEM_SHARE_DIR
     
-    [[clean_up<mem>]]
-        inherit = CLEAN_UP, ENSMEMBER
+    [[clean_up_F<mem>]]
+        inherit = CLEAN_UP, FORECAST_MEMBER
+    [[clean_up<rf><memh>]]
+        inherit = CLEAN_UP, REFORECAST_MEMBER
 
     [[VIZ]]
+        # TODO: Hardcoded Reforecast
         script = """
-            output_dir=${SHARE_DIR}/viz/${fieldname}/stage
+            output_dir=${CYCLE_SHARE_DIR}/viz/${fieldname}/stage
             mkdir -p $output_dir
-            python -c 'import viz; viz.app()' ${fieldname} "${SHARE_DIR}/mem*/merge_time/${input_file_name}" ""
+            python -c 'import viz; viz.app()' ${fieldname} \
+            "${CYCLE_SHARE_DIR}/F/mem*/merge_time/${input_file_name}" \
+            "${CYCLE_SHARE_DIR}/H/rf*/mem*/merge_time/${input_file_name}"
             mv output/* $output_dir
             #rm -rf *
         """
@@ -301,6 +363,11 @@
             fieldname=$CYLC_TASK_PARAM_vizfld
             input_file_name=surface_d01_${CYLC_TASK_PARAM_vizfld}.nc
 
+    [[viz_Rainfall]]
+        inherit = None, VIZ
+        [[[environment]]]
+            fieldname=Rainfall
+            input_file_name=surface_d01_RAIN_rate.nc
 
 
 

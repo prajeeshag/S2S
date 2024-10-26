@@ -1,5 +1,7 @@
 {% set SITE='kaust' %}
-{% set NMEMBERS = 51 %}
+{% set FMEMBERS = 51 %}
+{% set HMEMBERS = 11 %}
+{% set HYEARS = 20 %}
 {% set FORECAST_DATE = '2024-09-19' %}
 {% set initialCyclePoint = '2024-09-19' %}
 {% set finalCyclePoint = '2024-09-19' %}

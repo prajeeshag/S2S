@@ -2,21 +2,27 @@ import datetime
 import glob
 import hashlib
 import logging
+import math
 import os
 import shutil
 import subprocess
 import tempfile
 import time
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Annotated, Any
 
+import numpy as np
+import psutil
 import typer
 import xarray as xr
 import zarr
 from cdo import Cdo
-from dask.distributed import Client, LocalCluster
+from dask.distributed import Client, LocalCluster, wait
+from scipy import ndimage, stats
 from viz_config import (
     EnsStat,
+    EnsStatOpr,
     FileType,
     RemapMethod,
     TimeStat,
@@ -39,12 +45,12 @@ cdo = Cdo(tempdir="./tmp", silent=False)
 os.environ["REMAP_EXTRAPOLATE"] = "off"
 
 
-def to_zip(input, output):
+def _to_zip(input, output):
     # 7zz a -tzip archive.zarr.zip archive.zarr/.
     subprocess.run(["7zz", "a", "-tzip", output, f"{input}/."])
 
 
-def griddes(lonsize, latsize, slon, slat, resolution):
+def _griddes(lonsize, latsize, slon, slat, resolution):
     """
     Create a cdo grid description file:
     gridtype='lonlat'
@@ -57,7 +63,7 @@ def griddes(lonsize, latsize, slon, slat, resolution):
     """
     temp_file = (
         "griddes_"
-        + create_hash(f"{lonsize} {latsize} {slon} {slat} {resolution}")
+        + _create_hash(f"{lonsize} {latsize} {slon} {slat} {resolution}")
         + ".txt"
     )
     with open(temp_file, "w") as f:
@@ -74,16 +80,16 @@ def griddes(lonsize, latsize, slon, slat, resolution):
     return temp_file
 
 
-def create_hash(input_string: str) -> str:
+def _create_hash(input_string: str) -> str:
     hash = hashlib.sha256()
     hash.update(input_string.encode("utf-8"))
     return f"{hash.hexdigest()}.nc"
     # return input_string.replace(" ", "").replace("\n", "").replace("/", "_")
 
 
-def cdo_execute(input):
+def _cdo_execute(input):
     logger.info(f"Processing: cdo {input} ")
-    output = create_hash(input)
+    output = _create_hash(input)
     logger.info(f"hash path: {output}")
     if Path(output).exists():
         logger.info(f"output for `cdo {input}` already exists; not recomputing")
@@ -95,50 +101,17 @@ def cdo_execute(input):
     return output
 
 
-def sort_by_coord(coord, files):
-    # Zip the two lists together, sort based on coord, and unzip back into two lists
-    sorted_coord_files = sorted(zip(coord, files), key=lambda x: x[0])
-    coord_sorted, files_sorted = zip(*sorted_coord_files)
-    # Convert the result back to lists
-    return list(coord_sorted), list(files_sorted)
-
-
-def preproc(inputfiles, cdoOpt):
-    # start cpu time
-    stime = time.time()
-    outputfiles = []
-    cdo_inputs = []
-    for idx, nc_file in enumerate(inputfiles):
-        outputfile = f"mem{idx}_{Path(nc_file).name}"
-        outputfiles.append(outputfile)
-        cdo_inputs.append(f"{cdoOpt} {nc_file}")
-    cpu_count = os.cpu_count()
-    nworkers = min(len(cdo_inputs), cpu_count)
-    threads_per_worker = int(cpu_count / nworkers)
-    with LocalCluster(
-        n_workers=nworkers, threads_per_worker=threads_per_worker
-    ) as cluster, Client(cluster) as client:
-        futures = client.map(cdo_execute, cdo_inputs, outputfiles)
-        client.gather(futures)
-    logger.info(f"Time for preproc: {time.time() - stime}")
-    return outputfiles
-
-
-def get_member_coord(inputfiles: list[str]):
-    """
-    inputfiles has format /some/directory/mem{d}/file.nc
-    get a list of {d}
-    """
-    return [int(f.split("/mem")[1].split("/")[0]) for f in inputfiles]
-
-
 def write_to_zarr(
     ncfiles: list[str],
     coord: list[int] | list[float] | list[str],
     dimname: str,
     output: str,
+    nworkers: int | None = None,
+    use_dask: bool = True,
 ):
     output = f"{output}.zarr"
+    if Path(f"{output}.nc").exists():
+        return
     # multiprocessing.set_start_method("fork", force=True)
     store = zarr.DirectoryStore(output)
 
@@ -162,22 +135,36 @@ def write_to_zarr(
         ds.to_zarr(store, mode="w", compute=False)
 
         len_files = len(ncfiles)
-        cpu_count = os.cpu_count()
-        nworkers = min(len(ncfiles), cpu_count)
+        cpu_count = max(psutil.cpu_count(logical=False) // 2, 1)
+        if nworkers is None:
+            nworkers = min(len(ncfiles), cpu_count)
+        else:
+            nworkers = min(nworkers, cpu_count)
         threads_per_worker = int(cpu_count / nworkers)
-        with LocalCluster(
-            n_workers=nworkers, threads_per_worker=threads_per_worker
-        ) as cluster, Client(cluster) as client:
-            futures = client.map(
-                _write_to_zarr,
-                [store] * len_files,
-                ncfiles,
-                list(range(len_files)),
-                [dimname] * len_files,
-            )
-            client.gather(futures)
+        if use_dask:
+            with LocalCluster(
+                n_workers=nworkers, threads_per_worker=threads_per_worker
+            ) as cluster, Client(cluster) as client:
+                futures = client.map(
+                    _write_to_zarr,
+                    [store] * len_files,
+                    ncfiles,
+                    list(range(len_files)),
+                    [dimname] * len_files,
+                )
+                client.gather(futures)
+        else:
+            with ProcessPoolExecutor(max_workers=nworkers) as executor:
+                futures = executor.map(
+                    _write_to_zarr,
+                    [store] * len_files,
+                    ncfiles,
+                    list(range(len_files)),
+                    [dimname] * len_files,
+                )
+                list(futures)
     logger.info(f"{output} created")
-    to_zip(output, f"{output}.zip")
+    _to_zip(output, f"{output}.zip")
     logger.info(f"{output}.zip created")
     # remove output dir
     shutil.rmtree(output)
@@ -228,7 +215,7 @@ def _write_to_zarr(zarr_store, nc_file, idx, dimname):
     logger.info(f"Finished writing file: {nc_file} to zarr store")
 
 
-def remap_wgts(
+def _remap_wgts(
     inputfile,
     res: float | None = None,
     method: RemapMethod = RemapMethod.nearestneighbor,
@@ -246,7 +233,7 @@ def remap_wgts(
     ysize = int((maxlat - minlat) / res)
     ds.close()
 
-    griddes_file = griddes(xsize, ysize, minlon, minlat, res)
+    griddes_file = _griddes(xsize, ysize, minlon, minlat, res)
 
     remap_wgt_file = f"remap_wgt{method}_{griddes_file}.nc"
 
@@ -306,11 +293,11 @@ def add_days_to_date(date_str: str, days: int) -> str:
     return new_date.strftime("%Y-%m-%d")
 
 
-def get_time_as_dates(nc_file_path: str) -> list[str]:
+def get_time_as_dates(nc_file_path: str, format="%Y-%m-%d") -> list[str]:
     # Open the dataset in lazy loading mode
     with xr.open_dataset(nc_file_path, chunks={}) as ds:
         # Ensure the time variable exists in the dataset
-        return ds["Times"].dt.strftime("%Y-%m-%d").values.tolist()
+        return ds["Times"].dt.strftime(format).values.tolist()
 
 
 def get_cdoinput_seltimestep(file: str, weekday: WeekDay):
@@ -336,6 +323,22 @@ def get_cdoinput_seltimestep(file: str, weekday: WeekDay):
     return f" -seltimestep,{start_time_step}/{end_time_step}"
 
 
+def get_cdoinput_settaxis(fcstfile: str):
+    # Open the NetCDF file using xarray
+    timestamps = get_time_as_dates(fcstfile)
+    with xr.open_dataset(fcstfile, chunks={}) as ds:
+        # Ensure the time variable exists in the dataset
+        timestamps = ds["Times"][0:2].dt.strftime("%Y-%m-%dT%H:%M:%S").values.tolist()
+    start_date = timestamps[0].split("T")[0]
+    start_time = timestamps[0].split("T")[1]
+    time1 = datetime.datetime.strptime(timestamps[0], "%Y-%m-%dT%H:%M:%S")
+    time2 = datetime.datetime.strptime(timestamps[1], "%Y-%m-%dT%H:%M:%S")
+    # Calculate the difference in hours
+    inc_hours = (time2 - time1).total_seconds() / 3600
+
+    return f" -settaxis,{start_date},{start_time},{inc_hours}hour "
+
+
 def process(
     vname: str,
     pre_cdoinput: str,
@@ -353,27 +356,78 @@ def process(
     preprocess_opr = f"{post_cdoinput} {time_coarsen_cdoinput} {pre_cdoinput}"
 
     if preprocess_opr.strip():
-        fcst_files = cdo_execute_parallel([f"{preprocess_opr} {f}" for f in fcst_files])
-
-        refcst_files = []
         if config.reforecast_needed:
+            logger.info(f"Reforecast files for {vname} needed")
+            if not refcst_files:
+                raise ValueError(f"Could not find reforecast files for {vname}")
+            set_taxis = get_cdoinput_settaxis(fcst_files[0])
             refcst_files = cdo_execute_parallel(
-                [f"{preprocess_opr} {f}" for f in refcst_files]
+                [f"{preprocess_opr} {set_taxis} {f}" for f in refcst_files]
             )
+        fcst_files = cdo_execute_parallel([f"{preprocess_opr} {f}" for f in fcst_files])
+    else:
+        refcst_files = refcst_files
 
     for ens_stat_name, ens_stat_oprs in config.ens_stats.items():
-        if ens_stat_oprs[0].get_cdo_opr(fcst_files) is None:
-            raise NotImplementedError()
-        process_ens_stat_cdo(
-            vname,
-            time_coarsen_name,
-            ens_stat_name,
-            ens_stat_oprs,
-            config.get_ens_stat_coord_values(ens_stat_name),
-            fcst_files,
-            refcst_files,
-            config.file_type[ens_stat_name],
-        )
+        if ens_stat_oprs[0].opr == EnsStatOpr.efi:
+            logger.info(f"Calculating {ens_stat_name} for {vname}")
+            calc_ens_stats(
+                vname,
+                time_coarsen_name,
+                ens_stat_name,
+                config.file_type[ens_stat_name],
+                fcst_files,
+                refcst_files,
+            )
+            logger.info(f"Completed Calculating {ens_stat_name} for {vname}")
+        elif ens_stat_oprs[0].opr == EnsStatOpr.members:
+            logger.info(f"Writing {ens_stat_name} for {vname}")
+            file_name = create_file_name(vname, time_coarsen_name, ens_stat_name)
+            if config.is_zarr(ens_stat_name):
+                write_to_zarr(
+                    fcst_files,
+                    coord=list(range(len(fcst_files))),
+                    dimname="member",
+                    output=file_name,
+                )
+            if config.is_nc(ens_stat_name):
+                write_to_nc(
+                    fcst_files,
+                    coord=list(range(len(fcst_files))),
+                    dimname="member",
+                    output=file_name,
+                )
+            logger.info(f"Completed writing {ens_stat_name} for {vname}")
+        elif ens_stat_oprs[0].opr == EnsStatOpr.rfmembers:
+            logger.info(f"Writing {ens_stat_name} for {vname}")
+            file_name = create_file_name(vname, time_coarsen_name, ens_stat_name)
+            if config.is_zarr(ens_stat_name):
+                write_to_zarr(
+                    refcst_files,
+                    coord=list(range(len(refcst_files))),
+                    dimname="member",
+                    output=file_name,
+                    use_dask=False,
+                )
+            if config.is_nc(ens_stat_name):
+                write_to_nc(
+                    refcst_files,
+                    coord=list(range(len(fcst_files))),
+                    dimname="member",
+                    output=file_name,
+                )
+            logger.info(f"Completed writing {ens_stat_name} for {vname}")
+        else:
+            process_ens_stat_cdo(
+                vname,
+                time_coarsen_name,
+                ens_stat_name,
+                ens_stat_oprs,
+                config.get_ens_stat_coord_values(ens_stat_name),
+                fcst_files,
+                refcst_files,
+                config.file_type[ens_stat_name],
+            )
 
 
 def create_file_name(vname: str, time_coarsen_name: str, stat_name: str):
@@ -433,15 +487,15 @@ def get_cdoinput_remap(in_file, config):
         return ""
     method = config.remap.method
     res = config.remap.res
-    griddes_file, remap_wgt_file = remap_wgts(in_file, res, method)
+    griddes_file, remap_wgt_file = _remap_wgts(in_file, res, method)
     return f" -remap,{griddes_file},{remap_wgt_file} "
 
 
 def get_cdoinput_rename(vname, config):
-    if config.rename is None:
-        return ""
-    oldname = config.rename.from_
-    return f" -chname,{oldname},{vname}"
+    # if config.rename is None:
+    #     return ""
+    # oldname = config.rename.from_
+    return f" -setname,{vname}"
 
 
 def get_cdoinput_unit_conversion(vname, config):
@@ -460,7 +514,7 @@ def get_cdoinput_unit_conversion(vname, config):
 def cdo_execute_parallel(inputs: list[str]) -> list[str]:
     # start cpu time
     stime = time.time()
-    cpu_count = max(os.cpu_count() - 1, 1)
+    cpu_count = max(psutil.cpu_count(logical=False) // 2, 1)
     nworkers = min(len(inputs), cpu_count)
     threads_per_worker = min(int(cpu_count / nworkers), 4)
     logger.info(f"nworkers: {nworkers}, threads_per_worker: {threads_per_worker}")
@@ -468,7 +522,7 @@ def cdo_execute_parallel(inputs: list[str]) -> list[str]:
     with LocalCluster(
         n_workers=nworkers, threads_per_worker=threads_per_worker
     ) as cluster, Client(cluster) as client:
-        futures = client.map(cdo_execute, inputs)
+        futures = client.map(_cdo_execute, inputs)
         output = client.gather(futures)
     logger.info(f"Time for cdo_execute_parallel: {time.time() - stime}")
     return output
@@ -495,6 +549,8 @@ def main(
     # mkdir outout dir
     Path("output").mkdir(parents=True, exist_ok=True)
 
+    logger.info(f"fcst_files_glob_str: {fcst_files_glob_str}")
+    logger.info(f"refcst_files_glob_str: {refcst_files_glob_str}")
     fcst_files = glob.glob(fcst_files_glob_str)
     refcst_files = glob.glob(refcst_files_glob_str)
 
@@ -505,3 +561,236 @@ def main(
 
     for stat in config.stat:
         process(vname, pre_opr, post_opr, stat, fcst_files, refcst_files)
+
+
+def calc_efi(
+    tf: np.ndarray, tc: np.ndarray, return_extra=False
+) -> float | tuple[float, float, float]:
+    tc = np.sort(tc)
+    tf = np.sort(tf)
+    q = stats.percentileofscore(tc, tc)[:-1] / 100
+    qfq = stats.percentileofscore(tf, tc)[:-1] / 100
+
+    # Calculate fraction and EFI
+    frac = (q - qfq) / np.sqrt(q * (1 - q))
+    efi = 2 / math.pi * np.trapezoid(frac, x=q)
+    if return_extra:
+        return efi, q, qfq
+    return efi
+
+
+def calc_sotp(tf, tc, quantile_method="quick"):
+    """
+    Calculate the Shift Of Tail (SOT) based on sorted climate and forecast data.
+
+    Parameters:
+    - Tf: Sorted forecast data
+    - Tc: Sorted climate data
+    - quantile_method: Method to calculate quantiles ('quick' or 'precise')
+
+    Returns:
+    - SOT_pos: Positive Shift Of Tail
+    """
+    # Determine the number of forecast ensembles and climate records
+    nens, cens = tf.shape[0], tc.shape[0]
+    # Define quantiles
+    if quantile_method == "quick":
+        qc90 = tc[int(cens * 0.9) - 1]
+        qc99 = tc[int(cens * 0.99) - 1]
+        qf90 = tf[int(nens * 0.9) - 1]
+    else:
+        qc90, qc99 = np.nanquantile(tc, [0.9, 0.99], axis=0)
+        qf90 = np.nanquantile(tf, 0.9, axis=0)
+    # Calculate SOT
+    sot_pos = (qf90 - qc99) / (qc99 - qc90)
+    # Mask invalid values and smooth contours
+    sot_pos_sm = np.ma.masked_invalid(ndimage.gaussian_filter(sot_pos, sigma=1.5))
+    return sot_pos_sm
+
+
+def calc_sotn(tf, tc, quantile_method="quick"):
+    """
+    Calculate the Shift Of Tail (SOT) based on sorted climate and forecast data.
+
+    Parameters:
+    - Tf: Sorted forecast data
+    - Tc: Sorted climate data
+    - quantile_method: Method to calculate quantiles ('quick' or 'precise')
+
+    Returns:
+    - SOT_neg: Negative Shift Of Tail
+    """
+    # Determine the number of forecast ensembles and climate records
+    nens, cens = tf.shape[0], tc.shape[0]
+    # Define quantiles
+    if quantile_method == "quick":
+        qc10 = tc[int(cens * 0.1) - 1]
+        qc1 = tc[int(cens * 0.01) - 1]
+        qf10 = tf[int(nens * 0.1) - 1]
+    else:
+        qc10, qc1 = np.nanquantile(tc, [0.1, 0.01], axis=0)
+        qf10 = np.nanquantile(tf, 0.1, axis=0)
+    # Calculate SOT
+    sot_neg = (qf10 - qc1) / (qc1 - qc10)
+    # Mask invalid values and smooth contours
+    sot_neg_sm = np.ma.masked_invalid(ndimage.gaussian_filter(sot_neg, sigma=1.5))
+    return sot_neg_sm
+
+
+def preprocess_times(ds):
+    ds = ds.assign_coords(
+        Times=range(ds.dims["Times"])
+    )  # Reset time to a simple range or keep it consistent
+    return ds
+
+
+def calc_efi_stats(
+    vname: str,
+    time_coarsen_name: str,
+    ens_stat_name: str,
+    file_type: FileType,
+    fcst_files: list[str],
+    clim_files: list[str],
+) -> xr.DataArray:
+    fcst = xr.open_mfdataset(fcst_files, combine="nested", concat_dim="member")[vname]
+    clim = xr.open_mfdataset(
+        clim_files, combine="nested", concat_dim="member", preprocess=preprocess_times
+    )[vname]
+
+    var = fcst.isel(member=slice(0, 3))
+
+    fcst_sort = np.sort(fcst, axis=0)
+    clim_sort = np.sort(clim, axis=0)
+    var[0, :, :, :] = calc_efi3d(fcst_sort, clim_sort)
+    logger.info("Finished calc_efi3d")
+    for t in range(fcst_sort.shape[1]):
+        var[1, t, :, :] = calc_sotp(fcst_sort[:, t, :, :], clim_sort[:, t, :, :])
+        var[2, t, :, :] = calc_sotn(fcst_sort[:, t, :, :], clim_sort[:, t, :, :])
+    logger.info("Finished calc_sotp and calc_sotn")
+
+    var_ds = var.to_dataset()
+    var_ds.rename_dims({"member": "stat"})
+    var_ds.assign_coords({"stat": ["efi", "sotp", "sotn"]})
+    file_name = create_file_name(vname, time_coarsen_name, ens_stat_name)
+    if file_type in [FileType.zarr, FileType.zarr_and_nc]:
+        var_ds.to_zarr(f"{file_name}.zarr.zip", mode="w")
+    if file_type in [FileType.nc, FileType.zarr_and_nc]:
+        var_ds.to_netcdf(f"{file_name}.nc")
+
+
+def calc_efi3d(
+    tf: np.ndarray, tc: np.ndarray, return_extra=False
+) -> float | tuple[float, float, float]:
+    print(tc)
+    tc = np.sort(tc, axis=0)
+    tf = np.sort(tf, axis=0)
+    logger.info("Sorted arrays")
+    q = np.array(
+        [
+            [
+                [
+                    stats.percentileofscore(tc[:, i, k, j], tc[:, i, k, j])[:-1] * 0.01
+                    for j in range(tc.shape[3])
+                ]
+                for k in range(tc.shape[2])
+            ]
+            for i in range(tc.shape[1])
+        ]
+    )  # Remove last element of Q
+    qfq = np.array(
+        [
+            [
+                [
+                    stats.percentileofscore(tf[:, i, k, j], tc[:, i, k, j])[:-1] * 0.01
+                    for j in range(tc.shape[3])
+                ]
+                for k in range(tc.shape[2])
+            ]
+            for i in range(tc.shape[1])
+        ]
+    )  # Remove last element of Q
+
+    # Calculate fraction and EFI
+    frac = (q - qfq) / np.sqrt(q * (1 - q))
+    efi = 2 / math.pi * np.trapezoid(frac, x=q)
+    if return_extra:
+        return efi, q, qfq
+    return efi
+
+
+def calc_ens_stats(
+    vname: str,
+    time_coarsen_name: str,
+    ens_stat_name: str,
+    file_type: FileType,
+    fcst_files: list[str],
+    clim_files: list[str],
+) -> xr.DataArray:
+    fcst = xr.open_mfdataset(fcst_files, combine="nested", concat_dim="member")[vname]
+    clim = xr.open_mfdataset(
+        clim_files, combine="nested", concat_dim="member", preprocess=preprocess_times
+    )[vname]
+    var = fcst.isel(member=slice(0, 3))
+    length = fcst.shape[1] * fcst.shape[2] * fcst.shape[3]
+    cpu_count = max(psutil.cpu_count(logical=False) // 2, 1)
+    nworkers = min(length, cpu_count)
+    threads_per_worker = 1
+    fcst_sort = np.sort(fcst.values, axis=0)
+    clim_sort = np.sort(clim.values, axis=0)
+    fcst2d = np.reshape(fcst_sort, (fcst.shape[0], length))
+    clim2d = np.reshape(clim_sort, (clim.shape[0], length))
+    # block_size * nworkers >= length
+    block_size = int(np.ceil(length / nworkers))
+
+    input_list = []
+    for t in range(nworkers):
+        sb = t * block_size
+        eb = (t + 1) * block_size
+        input_list.append((fcst2d[:, sb:eb], clim2d[:, sb:eb]))
+    logger.info("Submitting parallel jobs")
+    with LocalCluster(
+        n_workers=nworkers, threads_per_worker=threads_per_worker
+    ) as cluster, Client(cluster) as client:
+        remote_input_list = client.scatter(input_list)
+        futures = []
+        for remote_input in remote_input_list:
+            futures.append(client.submit(calc_efi1d, remote_input))
+        result = client.gather(futures)
+
+    logger.info("Done parallel jobs")
+    # result is a list of numpy arrays of length = nworkers, each array is of shape <= block_size
+    # unravel the result to get the full array
+    var[0, :, :, :] = np.concatenate(result).reshape(fcst.shape[1:])
+    for t in range(fcst_sort.shape[1]):
+        var[1, t, :, :] = calc_sotp(fcst_sort[:, t, :, :], clim_sort[:, t, :, :])
+        var[2, t, :, :] = calc_sotn(fcst_sort[:, t, :, :], clim_sort[:, t, :, :])
+    var_ds = var.to_dataset()
+    var_ds.rename_dims({"member": "stat"})
+    var_ds.rename_dims({"member": "stat"})
+    var_ds.assign_coords({"stat": ["efi", "sotp", "sotn"]})
+    file_name = create_file_name(vname, time_coarsen_name, ens_stat_name)
+    if file_type in [FileType.zarr, FileType.zarr_and_nc]:
+        var_ds.to_zarr(f"{file_name}.zarr.zip", mode="w")
+    if file_type in [FileType.nc, FileType.zarr_and_nc]:
+        var_ds.to_netcdf(f"{file_name}.nc")
+
+
+def calc_efi1d(inp: tuple[np.ndarray, np.ndarray]) -> np.ndarray:
+    tf, tc = inp
+    q = np.array(
+        [
+            stats.percentileofscore(tc[:, j], tc[:, j])[:-1] * 0.01
+            for j in range(tc.shape[1])
+        ]
+    )  # Remove last element of Q
+    qfq = np.array(
+        [
+            stats.percentileofscore(tf[:, j], tc[:, j])[:-1] * 0.01
+            for j in range(tc.shape[1])
+        ]
+    )  # Remove last element of Q
+
+    # Calculate fraction and EFI
+    frac = (q - qfq) / np.sqrt(q * (1 - q))
+    efi = 2 / math.pi * np.trapezoid(frac, x=q)
+    return efi
