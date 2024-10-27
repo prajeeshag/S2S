@@ -2,8 +2,9 @@
 ## NOTE
 - Refer the `S2S-visualization-catalog.pdf` for the figures
 - The below numbering for each item are the same figure numbers from the slides
-- :heavy_check_mark: means done but not finalized
-- :white_check_mark: means finalized
+- Tick Marks
+    - :heavy_check_mark: : done but yet to finalize
+    - :white_check_mark: : finalized
 
 # Visualization catalog
 ## Temperature [Refer Slide-1]
