@@ -25,14 +25,29 @@ Data Path: kw61469:/home/athippp/data/ncm/subseasonal/temperature/stage
 | :-- | :-- | :-- | :-- | :-- |
 | 1. | Weekly spatial (Probability > threshold) | RAIN_weekly_gtc_threshold.nc | :heavy_check_mark: | 
 | 2. | Weekly spatial (ensmedian) | RAIN_weekly_ensmedian.nc | :heavy_check_mark: | 
-| 3. | Daily time-series (Accumulated) | RAIN_daily_acc_enspctl.zarr.zip |  | 
-| 4. | Weekly Time-series (median with range) | RAIN_weekly_ensrange.zarr.zip | :heavy_check_mark: | 
+| 3. | Daily time-series (Accumulated) | RAIN_daily_acc_enspctl.zarr.zip | ✔️ | 
+| 4. | Weekly Time-series (median with range) | RAIN_weekly_ensrange.zarr.zip | ✔️ | 
 | 5. | Weekly Time-series (Probability  > threshold) | RAIN_daily_max_gtc_threshold.zarr.zip | :heavy_check_mark: | 
 | 6. | Weekly Table (Probability > threshold) | RAIN_daily_max_gtc_threshold.zarr.zip  | :heavy_check_mark: | 
 | 7. | Cumulative distribution function | RAIN_weekly.zarr.zip, reforecast/RAIN_weekly.zarr.zip, s2s.get_cdf()[s2s.py] | :heavy_check_mark: | 
 | 8. | Weekly spatial (Extreme Forecast Index) | RAIN_weekly_mean_[efi,sotp,sotn].nc | :heavy_check_mark: | 
 
 Data Path: kw61469:/home/athippp/data/ncm/subseasonal/rainfall/stage
+
+
+## Relative Humidity [Similar to Temperature, refer Slide-1]
+
+| No. | Description | Files | Data Status | Viz Status |
+| :-- | :-- | :-- | :-- | :-- |
+| 1. |  Weekly spatial (ensmedian Spatial) | RH2_weekly_mean_ensmedian.nc | :heavy_check_mark: | :heavy_check_mark: 
+| 2. |  Hourly Time-series (Pecentile) | RH2_enspctl.zarr.zip | :heavy_check_mark: | :heavy_check_mark: 
+| 3. |  Daily Time-series (median with range) | RH2_daily_max_ensrange.zarr.zip | :heavy_check_mark: | :heavy_check_mark:
+| 4. |  Daily Time-series (Probability of air Temperature > threshold) | RH2_daily_max_gtc_threshold.zarr.zip | :heavy_check_mark: | :heavy_check_mark:
+| 5. |  Daily Table (Probability of air Temperature > threshold) | R2_daily_max_gtc_threshold.zarr.zip | :heavy_check_mark: | 
+| 6. |  Cumulative distribution function | R2_weekly.zarr.zip, reforecast/R2_weekly.zarr.zip, s2s.get_cdf()[s2s.py] | :heavy_check_mark: | 
+| 7. |  Weekly spatial (Extreme Forecast Index) | R2_weekly_mean_[efi,sotp,sotn].nc | :heavy_check_mark: | 
+
+Data Path: kw61469:/home/athippp/data/ncm/subseasonal/RH2/stage
 
 # Python Code
 - s2s.py
