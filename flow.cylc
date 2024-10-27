@@ -351,7 +351,7 @@
             "${CYCLE_SHARE_DIR}/F/mem*/merge_time/${input_file_name}" \
             "${CYCLE_SHARE_DIR}/H/rf*/mem*/merge_time/${input_file_name}"
             mv output/* $output_dir
-            #rm -rf *
+            rm -rf *
         """
         [[[environment]]]
             fieldname=

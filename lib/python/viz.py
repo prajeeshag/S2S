@@ -1,12 +1,12 @@
 import datetime
 import glob
 import hashlib
+import itertools
 import logging
 import math
 import os
 import shutil
 import subprocess
-import tempfile
 import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -18,7 +18,8 @@ import typer
 import xarray as xr
 import zarr
 from cdo import Cdo
-from dask.distributed import Client, LocalCluster, wait
+from dask import config as cfg
+from dask.distributed import Client, LocalCluster, get_worker
 from scipy import ndimage, stats
 from viz_config import (
     EnsStat,
@@ -29,6 +30,8 @@ from viz_config import (
     WeekDay,
     get_config,
 )
+
+cfg.set({"distributed.scheduler.worker-ttl": None})
 
 # setup logger to use stdout
 logger = logging.getLogger(__name__)
@@ -47,7 +50,9 @@ os.environ["REMAP_EXTRAPOLATE"] = "off"
 
 def _to_zip(input, output):
     # 7zz a -tzip archive.zarr.zip archive.zarr/.
-    subprocess.run(["7zz", "a", "-tzip", output, f"{input}/."])
+    tmp = output + ".tmp.zip"
+    subprocess.run(["7zz", "a", "-tzip", tmp, f"{input}/."])
+    shutil.move(tmp, output)
 
 
 def _griddes(lonsize, latsize, slon, slat, resolution):
@@ -99,6 +104,101 @@ def _cdo_execute(input):
     shutil.move(tmp, output)
     logger.info(f"Completed processing: cdo {input}")
     return output
+
+
+def get_chunk_slices(array: xr.DataArray):
+    chunks = array.chunks
+    shape = array.shape
+    dim_names = array.dims
+    logger.info(f"chunks: {chunks}, shape: {shape}, dim_names: {dim_names}")
+    dim_slices = []
+    # Calculate slices for each dimension
+    for dim_chunks, dim_size in zip(chunks, shape):
+        dim_indices = []
+        start = 0
+        for size in dim_chunks:
+            end = start + size
+            dim_indices.append(slice(start, end))
+            start = end
+        dim_slices.append(dim_indices)
+    # Generate the Cartesian product of all slices across dimensions
+    for chunk_slices in itertools.product(*dim_slices):
+        isel = {n: x for n, x in zip(dim_names, chunk_slices)}
+        yield isel
+
+
+def _write_to_zarr_ds(input: tuple[xr.Dataset, dict], output: str):
+    worker = get_worker()
+    ds, region = input
+    ds.load(scheduler="synchronous")
+    logger.info(f"Worker {worker.address} Writing region: {region} to {output}")
+    ds.to_zarr(output, region=region)
+    ds.close()
+    del ds
+    del region
+
+
+def write_to_zarr_ds(
+    vname: str,
+    ncfiles: list[str],
+    coord: list[int] | list[float] | list[str],
+    dimname: str,
+    output: str,
+    nworkers: int | None = None,
+):
+    output = f"{output}.zarr"
+    if Path(f"{output}.zip").exists():
+        logger.info(f"{output}.zip already exists; not recomputing")
+        return
+
+    # multiprocessing.set_start_method("fork", force=True)
+    store = zarr.DirectoryStore(output)
+
+    if len(coord) != len(ncfiles):
+        raise ValueError(
+            f" len(coord) ({len(coord)}) does not match number of files ({len(ncfiles)})"
+        )
+    ds = xr.open_mfdataset(
+        ncfiles,
+        combine="nested",
+        concat_dim=dimname,
+        chunks={},
+    ).chunk(
+        {"lat": 10, "lon": 10, "Times": -1, dimname: len(ncfiles)},
+    )
+
+    ds = ds.assign_coords({dimname: coord})
+    ds.to_zarr(store, mode="w", compute=False)
+    cpu_count = max(psutil.cpu_count(logical=False) // 2, 1)
+    if nworkers is None:
+        nworkers = cpu_count
+    nworkers = min(nworkers, cpu_count)
+    threads_per_worker = int(cpu_count / nworkers)
+    logger.info(f"nworkers: {nworkers}, threads_per_worker: {threads_per_worker}")
+
+    ds = ds.drop_vars(set(ds.variables) - {vname})
+    ds.attrs = {}
+    logger.info(f"ds: {ds}")
+    input_list = []
+    ds_loaded = ds.compute()
+    logger.info("Submitting parallel jobs")
+    with LocalCluster(
+        n_workers=nworkers, threads_per_worker=threads_per_worker
+    ) as cluster, Client(cluster) as client:
+        # input_list_remote = client.scatter(input_list)
+        futures = []
+        for chunk_slice in get_chunk_slices(ds[vname]):
+            input = (ds_loaded.isel(**chunk_slice), chunk_slice)
+            futures.append(client.submit(_write_to_zarr_ds, input, output))
+        client.gather(futures)
+    ds.close()
+    ds_loaded.close()
+    logger.info(f"{output} created")
+    _to_zip(output, f"{output}.zip")
+    logger.info(f"{output}.zip created")
+    # remove output dir
+    shutil.rmtree(output)
+    logger.info(f"{output} removed")
 
 
 def write_to_zarr(
@@ -384,7 +484,8 @@ def process(
             logger.info(f"Writing {ens_stat_name} for {vname}")
             file_name = create_file_name(vname, time_coarsen_name, ens_stat_name)
             if config.is_zarr(ens_stat_name):
-                write_to_zarr(
+                write_to_zarr_ds(
+                    vname,
                     fcst_files,
                     coord=list(range(len(fcst_files))),
                     dimname="member",
@@ -402,12 +503,12 @@ def process(
             logger.info(f"Writing {ens_stat_name} for {vname}")
             file_name = create_file_name(vname, time_coarsen_name, ens_stat_name)
             if config.is_zarr(ens_stat_name):
-                write_to_zarr(
+                write_to_zarr_ds(
+                    vname,
                     refcst_files,
                     coord=list(range(len(refcst_files))),
                     dimname="member",
                     output=file_name,
-                    use_dask=False,
                 )
             if config.is_nc(ens_stat_name):
                 write_to_nc(
@@ -456,7 +557,8 @@ def process_ens_stat_cdo(
     files = cdo_execute_parallel(cdo_inputs)
 
     if file_type in [FileType.zarr, FileType.zarr_and_nc]:
-        write_to_zarr(
+        write_to_zarr_ds(
+            vname,
             files,
             coord_values,
             ens_stat_name,
@@ -756,7 +858,9 @@ def calc_ens_stats(
         for remote_input in remote_input_list:
             futures.append(client.submit(calc_efi1d, remote_input))
         result = client.gather(futures)
-
+        for remote_input in remote_input_list:
+            client.cancel(remote_input)
+        del remote_input_list
     logger.info("Done parallel jobs")
     # result is a list of numpy arrays of length = nworkers, each array is of shape <= block_size
     # unravel the result to get the full array
@@ -773,6 +877,8 @@ def calc_ens_stats(
         var_ds.to_zarr(f"{file_name}.zarr.zip", mode="w")
     if file_type in [FileType.nc, FileType.zarr_and_nc]:
         var_ds.to_netcdf(f"{file_name}.nc")
+
+    fcst.close()
 
 
 def calc_efi1d(inp: tuple[np.ndarray, np.ndarray]) -> np.ndarray:

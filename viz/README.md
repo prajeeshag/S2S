@@ -11,42 +11,48 @@
 
 | No. | Description | Files | Data Status | Viz Status |
 | :-- | :-- | :-- | :-- | :-- |
-| 1. |  Weekly spatial (ensmedian Spatial) | T2_weekly_mean_ensmedian.nc | :heavy_check_mark: | :heavy_check_mark: 
-| 2. |  Hourly Time-series (Pecentile) | T2_enspctl.zarr.zip | :heavy_check_mark: | :heavy_check_mark: 
-| 3. |  Daily Time-series (median with range) | T2_daily_max_ensrange.zarr.zip | :heavy_check_mark: | :heavy_check_mark:
-| 4. |  Daily Time-series (Probability of air Temperature > threshold) | T2_daily_max_gtc_threshold.zarr.zip | :heavy_check_mark: | :heavy_check_mark:
-| 5. |  Daily Table (Probability of air Temperature > threshold) | T2_daily_max_gtc_threshold.zarr.zip | :heavy_check_mark: | 
-| 6. |  Cumulative distribution function | T2_weekly.zarr.zip, reforecast/T2_weekly.zarr.zip, s2s.get_cdf()[s2s.py] | :heavy_check_mark: | 
-| 7. |  Weekly spatial (Extreme Forecast Index) | T2_weekly_mean_[efi,sotp,sotn].nc | :heavy_check_mark: | 
+| 1. |  Weekly spatial (ensmedian Spatial) | T2_weekmean_ensmedian.nc | :heavy_check_mark: | 
+| 2. |  Hourly Time-series (Pecentile) | T2_enspctl.zarr.zip | :heavy_check_mark: | 
+| 3. |  Daily Time-series (daily maximum RH min,median,max) | T2_daymax_ensrange.zarr.zip | :heavy_check_mark: | 
+| 4. |  Daily Time-series (Probability of daily maximum RH > threshold) | T2_daymax_ensprob_gtc.zarr.zip | :heavy_check_mark: | 
+| 5. |  Daily Table (Probability of daily maximum RH > threshold) | T2_daymax_ensprob_gtc.zarr.zip | :heavy_check_mark: | 
+| 3. |  Daily Time-series (daily minimum RH min,median,max) | T2_daymin_ensrange.zarr.zip | :heavy_check_mark: | 
+| 4. |  Daily Time-series (Probability of daily minimum RH < threshold) | T2_daymin_ensprob_ltc.zarr.zip | :heavy_check_mark: | 
+| 5. |  Daily Table (Probability of daily minimum RH < threshold) | T2_daymin_ensprob_ltc.zarr.zip | :heavy_check_mark: | 
+| 6. |  Cumulative distribution function | T2_weekmean_ensmembers.zarr.zip, T2_weekmean_ensmembers_rf.zarr.zip, s2s.get_cdf()[s2s.py] | :heavy_check_mark: | 
+| 7. |  Weekly spatial (Extreme Forecast Index) | T2_weekmean_efi.nc | :heavy_check_mark: | 
 
-Data Path: kw61469:/home/athippp/data/ncm/subseasonal/temperature/stage
+Data Path: kw61469:/home/athippp/data/ncm/subseasonal/T2/stage
 
 ## Rainfall [Refer Slide-2]
 | No. | Description | Files | Data Status | Viz Status |
 | :-- | :-- | :-- | :-- | :-- |
-| 1. | Weekly spatial (Probability > threshold) | RAIN_weekly_gtc_threshold.nc | :heavy_check_mark: | 
-| 2. | Weekly spatial (ensmedian) | RAIN_weekly_ensmedian.nc | :heavy_check_mark: | 
-| 3. | Daily time-series (Accumulated) | RAIN_daily_acc_enspctl.zarr.zip | ✔️ | 
-| 4. | Weekly Time-series (median with range) | RAIN_weekly_ensrange.zarr.zip | ✔️ | 
-| 5. | Weekly Time-series (Probability  > threshold) | RAIN_daily_max_gtc_threshold.zarr.zip | :heavy_check_mark: | 
-| 6. | Weekly Table (Probability > threshold) | RAIN_daily_max_gtc_threshold.zarr.zip  | :heavy_check_mark: | 
-| 7. | Cumulative distribution function | RAIN_weekly.zarr.zip, reforecast/RAIN_weekly.zarr.zip, s2s.get_cdf()[s2s.py] | :heavy_check_mark: | 
-| 8. | Weekly spatial (Extreme Forecast Index) | RAIN_weekly_mean_[efi,sotp,sotn].nc | :heavy_check_mark: | 
+| 1. | Weekly spatial (Probability > threshold) | Rainfall_weeksum_ensprob_gtc.zarr.zip | :heavy_check_mark: | 
+| 2. | Weekly spatial (ensmedian) | Rainfall_weeksum_ensmedian.nc | ✔️ | 
+| 3. | Daily time-series (Accumulated) | Rainfall_daycumsum_ensrange.zarr.zip | ✔️ | 
+| 4. | Weekly Time-series (median with range) | Rainfall_weeksum_ensrange.zarr.zip | ✔️ | 
+| 5. | Weekly Time-series (Probability  > threshold) | Rain_weeksum_ensprob_gtc.zarr.zip | :heavy_check_mark: | 
+| 6. | Weekly Table (Probability > threshold) | Rainfall_weeksum_ensprob_gtc.zarr.zip  | :heavy_check_mark: | 
+| 7. | Cumulative distribution function | Rainfall_weeksum_ensmembers.zarr.zip, Rainfall_weeksum_ensmembers_rf.zarr.zip, s2s.get_cdf()[s2s.py] | :heavy_check_mark: | 
+| 8. | Weekly spatial (Extreme Forecast Index) | Rainfall_weeksum_efi.nc | :heavy_check_mark: | 
 
-Data Path: kw61469:/home/athippp/data/ncm/subseasonal/rainfall/stage
+Data Path: kw61469:/home/athippp/data/ncm/subseasonal/Rainfall/stage
 
 
 ## Relative Humidity [Similar to Temperature, refer Slide-1]
 
 | No. | Description | Files | Data Status | Viz Status |
 | :-- | :-- | :-- | :-- | :-- |
-| 1. |  Weekly spatial (ensmedian Spatial) | RH2_weekly_mean_ensmedian.nc | :heavy_check_mark: | :heavy_check_mark: 
-| 2. |  Hourly Time-series (Pecentile) | RH2_enspctl.zarr.zip | :heavy_check_mark: | :heavy_check_mark: 
-| 3. |  Daily Time-series (median with range) | RH2_daily_max_ensrange.zarr.zip | :heavy_check_mark: | :heavy_check_mark:
-| 4. |  Daily Time-series (Probability of air Temperature > threshold) | RH2_daily_max_gtc_threshold.zarr.zip | :heavy_check_mark: | :heavy_check_mark:
-| 5. |  Daily Table (Probability of air Temperature > threshold) | R2_daily_max_gtc_threshold.zarr.zip | :heavy_check_mark: | 
-| 6. |  Cumulative distribution function | R2_weekly.zarr.zip, reforecast/R2_weekly.zarr.zip, s2s.get_cdf()[s2s.py] | :heavy_check_mark: | 
-| 7. |  Weekly spatial (Extreme Forecast Index) | R2_weekly_mean_[efi,sotp,sotn].nc | :heavy_check_mark: | 
+| 1. |  Weekly spatial (ensmedian Spatial) | RH2_weekmean_ensmedian.nc | :heavy_check_mark: | 
+| 2. |  Hourly Time-series (Pecentile) | RH2_enspctl.zarr.zip | :heavy_check_mark: | 
+| 3. |  Daily Time-series (daily maximum RH min,median,max) | RH2_daymax_ensrange.zarr.zip | :heavy_check_mark: | 
+| 4. |  Daily Time-series (Probability of daily maximum RH > threshold) | RH2_daymax_ensprob_gtc.zarr.zip | :heavy_check_mark: | 
+| 5. |  Daily Table (Probability of daily maximum RH > threshold) | RH2_daymax_ensprob_gtc.zarr.zip | :heavy_check_mark: | 
+| 3. |  Daily Time-series (daily minimum RH min,median,max) | RH2_daymin_ensrange.zarr.zip | :heavy_check_mark: | 
+| 4. |  Daily Time-series (Probability of daily minimum RH < threshold) | RH2_daymin_ensprob_ltc.zarr.zip | :heavy_check_mark: | 
+| 5. |  Daily Table (Probability of daily minimum RH < threshold) | RH2_daymin_ensprob_ltc.zarr.zip | :heavy_check_mark: | 
+| 6. |  Cumulative distribution function | RH2_weekmean_ensmembers.zarr.zip, RH2_weekmean_ensmembers_rf.zarr.zip, s2s.get_cdf()[s2s.py] | :heavy_check_mark: | 
+| 7. |  Weekly spatial (Extreme Forecast Index) | RH2_weekmean_efi.nc | :heavy_check_mark: | 
 
 Data Path: kw61469:/home/athippp/data/ncm/subseasonal/RH2/stage
 
