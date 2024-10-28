@@ -66,13 +66,11 @@ Data Path: kw61469:/home/athippp/data/ncm/subseasonal/RH2/stage
 
 Data files:
 
-- `<VAR>_weekly_mean_efi.nc`
-- `<VAR>_weekly_mean_sotn.nc`
-- `<VAR>_weekly_mean_sotp.nc`
+- `<VAR>_weekmean_efi.nc`
 
-Description:The Extreme Forecast Index (EFI) is stored in `<VAR>_weekly_mean_efi.nc`.
+Description:The Extreme Forecast Index (EFI) is stored in `<VAR>_weekly_mean_efi.nc` as `efi` in dimension `stat` of `<VAR>`.
 We plot this index in a spartial map with shades. The colomap provided in the presentation.
-The Shift of Tails (SOT) is stored in `<VAR>_weekly_mean_sotn.nc` for negative values and `<VAR>_weekly_mean_sotp.nc` for positive values.
+The Shift of Tails (SOT) is stored in `<VAR>_weekmean_efi.nc` for negative values as `sotn` in the dimension `stat` and `sotp` for positive values.
 We plot this index with contours overlay over the EFI map.
 Temperture should be plot with two contours levels (0.5 for positive and -0.5 for negative) while Precipitation needs only one contour (0.5).
 
@@ -81,8 +79,8 @@ Temperture should be plot with two contours levels (0.5 for positive and -0.5 fo
 ## CDF plot for one grid point [Slide-1<fig.6>, Slide-2<fig.7>]
 Data files:
 
-- `<VAR>_weekly.zarr.zip`
-- `reforecast/<VAR>_weekly.zarr.zip`
+- `<VAR>_weekmean_ensmember.zarr.zip`
+- `<VAR>_weekmean_ensmembers_rf.zarr.zip`
 
 Retrival function:`from s2s.py import get_cdf`
 
