@@ -62,7 +62,7 @@ fields:
     preprocess:
       <<: *preprocess_defaults
       unit_conversion:
-        units: "%"
+        to_units: "%"
 
     stat:
       - time_coarsen: weekmean
@@ -108,7 +108,7 @@ fields:
       <<: *preprocess_defaults
       unit_conversion:
         addc: -273.15
-        units: degC
+        to_units: degC
 
     stat:
       - time_coarsen: weekmean
@@ -154,7 +154,7 @@ fields:
       <<: *preprocess_defaults
       unit_conversion:
         mulc: 3600
-        units: mm
+        to_units: mm
 
     stat:
       - time_coarsen: weeksum

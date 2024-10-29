@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Annotated
 
 import yaml
-from pydantic import AfterValidator, BaseModel, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 # setup logger to use stdout
 logger = logging.getLogger(__name__)
@@ -13,6 +13,10 @@ formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(messag
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
+
+
+class VizConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
 
 class EnsStatOpr(str, Enum):
@@ -29,7 +33,7 @@ class EnsStatOpr(str, Enum):
     rfmembers = "rfmembers"
 
 
-class EnsStat(BaseModel):
+class EnsStat(VizConfig):
     opr: EnsStatOpr
     arg: float = 0
 
@@ -113,22 +117,23 @@ class WeekDay(Enum):
         return super()._missing_(value)
 
 
-class Rename(BaseModel):
+class Rename(VizConfig):
     from_: Annotated[str, Field(..., alias="from")]
 
 
-class UnitConversion(BaseModel):
+class UnitConversion(VizConfig):
+
     mulc: float = 1.0
     addc: float = 0.0
     to_units: str = ""
 
 
-class Remap(BaseModel):
+class Remap(VizConfig):
     method: str
     res: float
 
 
-class PreProccess(BaseModel):
+class PreProccess(VizConfig):
     remap: Remap | None = None
     unit_conversion: UnitConversion | None = None
     rename: Rename | None = None
@@ -215,7 +220,7 @@ def ens_stat_list_validator(v: list[EnsStat]):
     raise ValueError(f"Invalid ens_stat: {oprs_set}")
 
 
-class TimeStat(BaseModel):
+class TimeStat(VizConfig):
     time_coarsen: TimeCoarsen | None = None
     ens_stats: Annotated[
         dict[str, list[EnsStat]],
@@ -264,7 +269,7 @@ class TimeStat(BaseModel):
         return [stat.opr.value for stat in ens_stat]
 
 
-class Field(BaseModel):
+class Field(VizConfig):
     preprocess: PreProccess | None = None
     stat: list[TimeStat] = []
 
