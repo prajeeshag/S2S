@@ -29,32 +29,51 @@ class EnsStatOpr(str, Enum):
     prob_ltc = "prob_ltc"
     prob_gtc = "prob_gtc"
     efi = "efi"
+    sotp = "sotp"
+    sotn = "sotn"
     members = "members"
     rfmembers = "rfmembers"
 
 
 class EnsStat(VizConfig):
     opr: EnsStatOpr
-    arg: float = 0
+    values: list[float] = []
+
+    @property
+    def is_cdo_opr(self):
+        return self.opr not in [
+            EnsStatOpr.efi,
+            EnsStatOpr.sotn,
+            EnsStatOpr.sotp,
+            EnsStatOpr.members,
+            EnsStatOpr.rfmembers,
+        ]
 
     def get_cdo_opr(self, files: list[str]):
+        if not self.is_cdo_opr:
+            return None
         files_str = " ".join(files)
-        if self.opr == EnsStatOpr.pctl:
-            return f"-enspctl,{self.arg} [ {files_str} ]"
-        elif self.opr == EnsStatOpr.prob_gtc:
-            return f" -ensmean [ -gtc,{self.arg} : {files_str} ] "
-        elif self.opr == EnsStatOpr.prob_ltc:
-            return f" -ensmean [ -ltc,{self.arg} : {files_str} ] "
-        elif self.opr in [
-            EnsStatOpr.min,
-            EnsStatOpr.max,
-            EnsStatOpr.mean,
-            EnsStatOpr.sum,
-            EnsStatOpr.median,
-        ]:
-            return f"-ens{self.opr.value} [ {files_str} ]"
-        else:
-            None
+        if self.opr not in [EnsStatOpr.pctl, EnsStatOpr.prob_ltc, EnsStatOpr.prob_gtc]:
+            yield f"-ens{self.opr.value} [ {files_str} ]"
+            return
+
+        for value in self.values:
+            if self.opr == EnsStatOpr.pctl:
+                yield f"-enspctl,{value} [ {files_str} ]"
+            elif self.opr == EnsStatOpr.prob_gtc:
+                yield f" -ensmean [ -gtc,{value} : {files_str} ] "
+            elif self.opr == EnsStatOpr.prob_ltc:
+                yield f" -ensmean [ -ltc,{value} : {files_str} ] "
+
+    def get_ens_stat_coord_values(self):
+        return self.values
+
+    @model_validator(mode="after")
+    def check_opr_args(self):
+        if self.opr not in [EnsStatOpr.pctl, EnsStatOpr.prob_ltc, EnsStatOpr.prob_gtc]:
+            self.values = []
+        self.values = list(set(self.values))
+        return self
 
 
 class RemapMethod(str, Enum):
@@ -63,7 +82,7 @@ class RemapMethod(str, Enum):
     conservative = "con"
 
 
-class TimeCoarsen(str, Enum):
+class TimeAggregation(str, Enum):
     daymean = "daymean"
     daysum = "daysum"
     daycumsum = "daycumsum"
@@ -75,25 +94,25 @@ class TimeCoarsen(str, Enum):
     weekmean_daymin = "weekmean_daymin"
 
     def get_cdo_opr(self):
-        if self == TimeCoarsen.daymean:
+        if self == TimeAggregation.daymean:
             return "-daymean"
-        elif self == TimeCoarsen.daysum:
+        elif self == TimeAggregation.daysum:
             return "-daysum"
-        elif self == TimeCoarsen.daycumsum:
+        elif self == TimeAggregation.daycumsum:
             return "-timcumsum -daysum"
-        elif self == TimeCoarsen.daymin:
+        elif self == TimeAggregation.daymin:
             return "-daymin"
-        elif self == TimeCoarsen.daymax:
+        elif self == TimeAggregation.daymax:
             return "-daymax"
-        elif self == TimeCoarsen.weekmean:
+        elif self == TimeAggregation.weekmean:
             return "-timselmean,7 -daymean"
-        elif self == TimeCoarsen.weeksum:
+        elif self == TimeAggregation.weeksum:
             return "-timselsum,7 -daysum"
-        elif self == TimeCoarsen.weekcumsum:
+        elif self == TimeAggregation.weekcumsum:
             return "-timcumsum -timselsum,7 -daysum"
-        elif self == TimeCoarsen.weekmean_daymax:
+        elif self == TimeAggregation.weekmean_daymax:
             return "-timselmean,7 -daymax"
-        elif self == TimeCoarsen.weekmean_daymin:
+        elif self == TimeAggregation.weekmean_daymin:
             return "-timselmean,7 -daymin"
         else:
             raise ValueError(f"Invalid time coarsen: {self}")
@@ -146,86 +165,9 @@ class FileType(Enum):
     zarr_and_nc = "zarr_and_nc"
 
 
-def ens_stats_validator(v: dict[str, list[EnsStat]]):
-    v_validated = {}
-    for name, ens_stat_list in v.items():
-        v_validated[name] = ens_stat_list_validator(ens_stat_list)
-    return v_validated
-
-
-def ens_stat_list_validator(v: list[EnsStat]):
-
-    # Validate unique list of EnsStat
-    stats_list = []
-    for stat in v:
-        arg = 0
-        if stat.opr in [EnsStatOpr.pctl, EnsStatOpr.prob_ltc, EnsStatOpr.prob_gtc]:
-            arg = stat.arg
-        stats_list.append((stat.opr, arg))
-
-    stats_set = set(stats_list)
-    if len(stats_set) != len(v):
-        raise ValueError("Invalid ens_stat: duplicate entries not allowed")
-
-    oprs_set = list(set([stat.opr for stat in v]))
-
-    if len(oprs_set) == 1:
-        return v
-
-    for opr in [
-        EnsStatOpr.pctl,
-        EnsStatOpr.prob_ltc,
-        EnsStatOpr.prob_gtc,
-        EnsStatOpr.members,
-        EnsStatOpr.rfmembers,
-        EnsStatOpr.efi,
-    ]:
-        if opr in oprs_set:
-            raise ValueError(
-                f"Invalid ens_stat: cannot combine {opr} with other operators"
-            )
-
-    for opr in oprs_set:
-        if (
-            opr
-            in [
-                EnsStatOpr.members,
-                EnsStatOpr.rfmembers,
-                EnsStatOpr.efi,
-            ]
-            and len(v) > 1
-        ):
-            raise ValueError(
-                "Invalid ens_stat: for operators 'members', 'rfmembers', 'efi' only one operator is allowed"
-            )
-
-    allowed_groups = [
-        [
-            EnsStatOpr.min,
-            EnsStatOpr.max,
-            EnsStatOpr.mean,
-            EnsStatOpr.sum,
-            EnsStatOpr.median,
-        ],
-    ]
-
-    for group in allowed_groups:
-        if any([opr in group for opr in oprs_set]):
-            if all([opr in group for opr in oprs_set]):
-                return v
-            else:
-                raise ValueError(
-                    f"Invalid ens_stat: allowed groups are: {allowed_groups}"
-                )
-    raise ValueError(f"Invalid ens_stat: {oprs_set}")
-
-
 class TimeStat(VizConfig):
-    time_coarsen: TimeCoarsen | None = None
-    ens_stats: Annotated[
-        dict[str, list[EnsStat]],
-        AfterValidator(ens_stats_validator),
-    ]
+    time_aggregation: TimeAggregation | None = None
+    ens_stats: dict[str, EnsStat]
     file_type: dict[str, FileType]
 
     @model_validator(mode="after")
@@ -251,22 +193,13 @@ class TimeStat(VizConfig):
         reforecast_stats = [
             EnsStatOpr.rfmembers,
             EnsStatOpr.efi,
+            EnsStatOpr.sotn,
+            EnsStatOpr.sotp,
         ]
         for x in self.ens_stats.values():
-            for stat in x:
-                if stat.opr in reforecast_stats:
-                    return True
+            if x.opr in reforecast_stats:
+                return True
         return False
-
-    def get_ens_stat_coord_values(self, stat_name: str):
-        ens_stat = self.ens_stats[stat_name]
-        if ens_stat[0].opr in [
-            EnsStatOpr.pctl,
-            EnsStatOpr.prob_ltc,
-            EnsStatOpr.prob_gtc,
-        ]:
-            return [stat.arg for stat in ens_stat]
-        return [stat.opr.value for stat in ens_stat]
 
 
 class Field(VizConfig):

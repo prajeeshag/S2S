@@ -10,7 +10,7 @@ import subprocess
 import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Callable
 
 import numpy as np
 import psutil
@@ -151,23 +151,31 @@ def write_to_zarr_ds(
         logger.info(f"{output}.zip already exists; not recomputing")
         return
 
+    if len(ncfiles) > 1:
+        if len(coord) != len(ncfiles):
+            raise ValueError(
+                f" len(coord) ({len(coord)}) does not match number of files ({len(ncfiles)})"
+            )
+        ds = xr.open_mfdataset(
+            ncfiles,
+            combine="nested",
+            concat_dim=dimname,
+            chunks={},
+        ).chunk(
+            {"lat": 10, "lon": 10, "Times": -1, dimname: len(ncfiles)},
+        )
+        ds = ds.assign_coords({dimname: coord})
+    else:
+        ds = xr.open_dataset(
+            ncfiles[0],
+            chunks={},
+        ).chunk(
+            {"lat": 10, "lon": 10, "Times": -1},
+        )
+
     # multiprocessing.set_start_method("fork", force=True)
     store = zarr.DirectoryStore(output)
 
-    if len(coord) != len(ncfiles):
-        raise ValueError(
-            f" len(coord) ({len(coord)}) does not match number of files ({len(ncfiles)})"
-        )
-    ds = xr.open_mfdataset(
-        ncfiles,
-        combine="nested",
-        concat_dim=dimname,
-        chunks={},
-    ).chunk(
-        {"lat": 10, "lon": 10, "Times": -1, dimname: len(ncfiles)},
-    )
-
-    ds = ds.assign_coords({dimname: coord})
     ds.to_zarr(store, mode="w", compute=False)
     cpu_count = max(psutil.cpu_count(logical=False) // 2, 1)
     if nworkers is None:
@@ -179,13 +187,11 @@ def write_to_zarr_ds(
     ds = ds.drop_vars(set(ds.variables) - {vname})
     ds.attrs = {}
     logger.info(f"ds: {ds}")
-    input_list = []
     ds_loaded = ds.compute()
     logger.info("Submitting parallel jobs")
     with LocalCluster(
         n_workers=nworkers, threads_per_worker=threads_per_worker
     ) as cluster, Client(cluster) as client:
-        # input_list_remote = client.scatter(input_list)
         futures = []
         for chunk_slice in get_chunk_slices(ds[vname]):
             input = (ds_loaded.isel(**chunk_slice), chunk_slice)
@@ -279,18 +285,17 @@ def write_to_nc(
 ):
     output = f"{output}.nc"
 
-    if len(coord) != len(ncfiles):
+    if len(ncfiles) > 1 and len(coord) != len(ncfiles):
         raise ValueError(
             f" len(coord) ({len(coord)}) does not match number of files ({len(ncfiles)})"
         )
-    if len(coord) == 1:
+    if len(ncfiles) == 1:
         shutil.move(ncfiles[0], output)
         logger.info(f"{output} created")
         return
 
     ds = xr.open_mfdataset(
         ncfiles,
-        chunks={"lat": 10, "lon": 10},
         combine="nested",
         concat_dim=dimname,
     )
@@ -448,30 +453,40 @@ def process(
     refcst_files: list[str],
 ):
     time_coarsen_cdoinput = ""
-    if config.time_coarsen is not None:
-        time_coarsen_cdoinput = config.time_coarsen.get_cdo_opr()
+    if config.time_aggregation is not None:
+        time_coarsen_cdoinput = config.time_aggregation.get_cdo_opr()
 
-    time_coarsen_name = config.time_coarsen.name if config.time_coarsen else ""
+    time_coarsen_name = config.time_aggregation.name if config.time_aggregation else ""
 
     preprocess_opr = f"{post_cdoinput} {time_coarsen_cdoinput} {pre_cdoinput}"
 
+    if config.reforecast_needed:
+        logger.info(f"Reforecast files for {vname} needed")
+        if not refcst_files:
+            raise ValueError(f"Could not find reforecast files for {vname}")
+        set_taxis = get_cdoinput_settaxis(fcst_files[0])
+        refcst_files = cdo_execute_parallel(
+            [f"{preprocess_opr} {set_taxis} {f}" for f in refcst_files]
+        )
     if preprocess_opr.strip():
-        if config.reforecast_needed:
-            logger.info(f"Reforecast files for {vname} needed")
-            if not refcst_files:
-                raise ValueError(f"Could not find reforecast files for {vname}")
-            set_taxis = get_cdoinput_settaxis(fcst_files[0])
-            refcst_files = cdo_execute_parallel(
-                [f"{preprocess_opr} {set_taxis} {f}" for f in refcst_files]
-            )
         fcst_files = cdo_execute_parallel([f"{preprocess_opr} {f}" for f in fcst_files])
     else:
         refcst_files = refcst_files
 
     for ens_stat_name, ens_stat_oprs in config.ens_stats.items():
-        if ens_stat_oprs[0].opr == EnsStatOpr.efi:
+        if ens_stat_oprs.is_cdo_opr:
+            process_ens_stat_cdo(
+                vname,
+                time_coarsen_name,
+                ens_stat_name,
+                ens_stat_oprs,
+                fcst_files,
+                refcst_files,
+                config.file_type[ens_stat_name],
+            )
+        elif ens_stat_oprs.opr == EnsStatOpr.efi:
             logger.info(f"Calculating {ens_stat_name} for {vname}")
-            calc_ens_stats(
+            calc_efi_stats(
                 vname,
                 time_coarsen_name,
                 ens_stat_name,
@@ -480,55 +495,60 @@ def process(
                 refcst_files,
             )
             logger.info(f"Completed Calculating {ens_stat_name} for {vname}")
-        elif ens_stat_oprs[0].opr == EnsStatOpr.members:
-            logger.info(f"Writing {ens_stat_name} for {vname}")
-            file_name = create_file_name(vname, time_coarsen_name, ens_stat_name)
-            if config.is_zarr(ens_stat_name):
-                write_to_zarr_ds(
-                    vname,
-                    fcst_files,
-                    coord=list(range(len(fcst_files))),
-                    dimname="member",
-                    output=file_name,
-                )
-            if config.is_nc(ens_stat_name):
-                write_to_nc(
-                    fcst_files,
-                    coord=list(range(len(fcst_files))),
-                    dimname="member",
-                    output=file_name,
-                )
-            logger.info(f"Completed writing {ens_stat_name} for {vname}")
-        elif ens_stat_oprs[0].opr == EnsStatOpr.rfmembers:
-            logger.info(f"Writing {ens_stat_name} for {vname}")
-            file_name = create_file_name(vname, time_coarsen_name, ens_stat_name)
-            if config.is_zarr(ens_stat_name):
-                write_to_zarr_ds(
-                    vname,
-                    refcst_files,
-                    coord=list(range(len(refcst_files))),
-                    dimname="member",
-                    output=file_name,
-                )
-            if config.is_nc(ens_stat_name):
-                write_to_nc(
-                    refcst_files,
-                    coord=list(range(len(fcst_files))),
-                    dimname="member",
-                    output=file_name,
-                )
-            logger.info(f"Completed writing {ens_stat_name} for {vname}")
-        else:
-            process_ens_stat_cdo(
+        elif ens_stat_oprs.opr == EnsStatOpr.sotn:
+            logger.info(f"Calculating {ens_stat_name} for {vname}")
+            calc_sot_stats(
                 vname,
                 time_coarsen_name,
                 ens_stat_name,
-                ens_stat_oprs,
-                config.get_ens_stat_coord_values(ens_stat_name),
+                config.file_type[ens_stat_name],
                 fcst_files,
                 refcst_files,
-                config.file_type[ens_stat_name],
+                calc_sotn,
             )
+            logger.info(f"Completed Calculating {ens_stat_name} for {vname}")
+        elif ens_stat_oprs.opr == EnsStatOpr.sotp:
+            logger.info(f"Calculating {ens_stat_name} for {vname}")
+            calc_sot_stats(
+                vname,
+                time_coarsen_name,
+                ens_stat_name,
+                config.file_type[ens_stat_name],
+                fcst_files,
+                refcst_files,
+                calc_sotp,
+            )
+            logger.info(f"Completed Calculating {ens_stat_name} for {vname}")
+        elif ens_stat_oprs.opr == EnsStatOpr.members:
+            logger.info(f"Writing {ens_stat_name} for {vname}")
+            file_name = create_file_name(vname, time_coarsen_name, ens_stat_name)
+            write_members(vname, config, fcst_files, ens_stat_name, file_name)
+            logger.info(f"Completed writing {ens_stat_name} for {vname}")
+        elif ens_stat_oprs.opr == EnsStatOpr.rfmembers:
+            logger.info(f"Writing {ens_stat_name} for {vname}")
+            file_name = create_file_name(vname, time_coarsen_name, ens_stat_name)
+            write_members(vname, config, refcst_files, ens_stat_name, file_name)
+            logger.info(f"Completed writing {ens_stat_name} for {vname}")
+        else:
+            raise NotImplementedError
+
+
+def write_members(vname, config, fcst_files, ens_stat_name, file_name):
+    if config.is_zarr(ens_stat_name):
+        write_to_zarr_ds(
+            vname,
+            fcst_files,
+            coord=list(range(len(fcst_files))),
+            dimname="member",
+            output=file_name,
+        )
+    if config.is_nc(ens_stat_name):
+        write_to_nc(
+            fcst_files,
+            coord=list(range(len(fcst_files))),
+            dimname="member",
+            output=file_name,
+        )
 
 
 def create_file_name(vname: str, time_coarsen_name: str, stat_name: str):
@@ -544,18 +564,18 @@ def process_ens_stat_cdo(
     vname: str,
     time_coarsen_name: str,
     ens_stat_name: str,
-    ens_stat_oprs: list[EnsStat],
-    coord_values: list[Any],
+    ens_stat_oprs: EnsStat,
     fcst_files: list[str],
     refcst_files: list[str],
     file_type: FileType,
 ):
 
     cdo_inputs = []
-    for ens_stat in ens_stat_oprs:
-        cdo_inputs.append(ens_stat.get_cdo_opr(fcst_files))
+    for cdo_opr in ens_stat_oprs.get_cdo_opr(fcst_files):
+        cdo_inputs.append(cdo_opr)
     files = cdo_execute_parallel(cdo_inputs)
 
+    coord_values = ens_stat_oprs.values
     if file_type in [FileType.zarr, FileType.zarr_and_nc]:
         write_to_zarr_ds(
             vname,
@@ -746,40 +766,6 @@ def preprocess_times(ds):
     return ds
 
 
-def calc_efi_stats(
-    vname: str,
-    time_coarsen_name: str,
-    ens_stat_name: str,
-    file_type: FileType,
-    fcst_files: list[str],
-    clim_files: list[str],
-) -> xr.DataArray:
-    fcst = xr.open_mfdataset(fcst_files, combine="nested", concat_dim="member")[vname]
-    clim = xr.open_mfdataset(
-        clim_files, combine="nested", concat_dim="member", preprocess=preprocess_times
-    )[vname]
-
-    var = fcst.isel(member=slice(0, 3))
-
-    fcst_sort = np.sort(fcst, axis=0)
-    clim_sort = np.sort(clim, axis=0)
-    var[0, :, :, :] = calc_efi3d(fcst_sort, clim_sort)
-    logger.info("Finished calc_efi3d")
-    for t in range(fcst_sort.shape[1]):
-        var[1, t, :, :] = calc_sotp(fcst_sort[:, t, :, :], clim_sort[:, t, :, :])
-        var[2, t, :, :] = calc_sotn(fcst_sort[:, t, :, :], clim_sort[:, t, :, :])
-    logger.info("Finished calc_sotp and calc_sotn")
-
-    var_ds = var.to_dataset()
-    var_ds.rename_dims({"member": "stat"})
-    var_ds.assign_coords({"stat": ["efi", "sotp", "sotn"]})
-    file_name = create_file_name(vname, time_coarsen_name, ens_stat_name)
-    if file_type in [FileType.zarr, FileType.zarr_and_nc]:
-        var_ds.to_zarr(f"{file_name}.zarr.zip", mode="w")
-    if file_type in [FileType.nc, FileType.zarr_and_nc]:
-        var_ds.to_netcdf(f"{file_name}.nc")
-
-
 def calc_efi3d(
     tf: np.ndarray, tc: np.ndarray, return_extra=False
 ) -> float | tuple[float, float, float]:
@@ -820,7 +806,35 @@ def calc_efi3d(
     return efi
 
 
-def calc_ens_stats(
+def calc_sot_stats(
+    vname: str,
+    time_coarsen_name: str,
+    ens_stat_name: str,
+    file_type: FileType,
+    fcst_files: list[str],
+    clim_files: list[str],
+    func: Callable,
+) -> xr.DataArray:
+    fcst = xr.open_mfdataset(fcst_files, combine="nested", concat_dim="member")[vname]
+    clim = xr.open_mfdataset(
+        clim_files, combine="nested", concat_dim="member", preprocess=preprocess_times
+    )[vname]
+    var = fcst.isel(member=0)
+    fcst_sort = np.sort(fcst.values, axis=0)
+    clim_sort = np.sort(clim.values, axis=0)
+    for t in range(fcst_sort.shape[1]):
+        var[t, :, :] = func(fcst_sort[:, t, :, :], clim_sort[:, t, :, :])
+    var_ds = var.to_dataset()
+    file_name = create_file_name(vname, time_coarsen_name, ens_stat_name)
+    if file_type in [FileType.zarr, FileType.zarr_and_nc]:
+        var_ds.to_zarr(f"{file_name}.zarr.zip", mode="w")
+    if file_type in [FileType.nc, FileType.zarr_and_nc]:
+        var_ds.to_netcdf(f"{file_name}.nc")
+
+    fcst.close()
+
+
+def calc_efi_stats(
     vname: str,
     time_coarsen_name: str,
     ens_stat_name: str,
@@ -832,7 +846,7 @@ def calc_ens_stats(
     clim = xr.open_mfdataset(
         clim_files, combine="nested", concat_dim="member", preprocess=preprocess_times
     )[vname]
-    var = fcst.isel(member=slice(0, 3))
+    var = fcst.isel(member=0)
     length = fcst.shape[1] * fcst.shape[2] * fcst.shape[3]
     cpu_count = max(psutil.cpu_count(logical=False) // 2, 1)
     nworkers = min(length, cpu_count)
@@ -864,20 +878,13 @@ def calc_ens_stats(
     logger.info("Done parallel jobs")
     # result is a list of numpy arrays of length = nworkers, each array is of shape <= block_size
     # unravel the result to get the full array
-    var[0, :, :, :] = np.concatenate(result).reshape(fcst.shape[1:])
-    for t in range(fcst_sort.shape[1]):
-        var[1, t, :, :] = calc_sotp(fcst_sort[:, t, :, :], clim_sort[:, t, :, :])
-        var[2, t, :, :] = calc_sotn(fcst_sort[:, t, :, :], clim_sort[:, t, :, :])
+    var[:, :, :] = np.concatenate(result).reshape(fcst.shape[1:])
     var_ds = var.to_dataset()
-    var_ds.rename_dims({"member": "stat"})
-    var_ds.rename_dims({"member": "stat"})
-    var_ds.assign_coords({"stat": ["efi", "sotp", "sotn"]})
     file_name = create_file_name(vname, time_coarsen_name, ens_stat_name)
     if file_type in [FileType.zarr, FileType.zarr_and_nc]:
         var_ds.to_zarr(f"{file_name}.zarr.zip", mode="w")
     if file_type in [FileType.nc, FileType.zarr_and_nc]:
         var_ds.to_netcdf(f"{file_name}.nc")
-
     fcst.close()
 
 
