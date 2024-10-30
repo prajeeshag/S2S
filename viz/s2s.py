@@ -77,12 +77,12 @@ def get_cdf(
     """
     if lonlat:
         lon, lat = lonlat
-        tc = tc_da.sel(lon=lon, lat=lat, method="nearest").isel(time=time_index)
-        tf = tf_da.sel(lon=lon, lat=lat, method="nearest").isel(time=time_index)
+        tc = tc_da.sel(lon=lon, lat=lat, method="nearest").isel(Times=time_index)
+        tf = tf_da.sel(lon=lon, lat=lat, method="nearest").isel(Times=time_index)
     elif index:
         x, y = index
-        tc = tc_da.isel(lon=x, lat=y, time=time_index)
-        tf = tf_da.isel(lon=x, lat=y, time=time_index)
+        tc = tc_da.isel(lon=x, lat=y, Times=time_index)
+        tf = tf_da.isel(lon=x, lat=y, Times=time_index)
     else:
         raise ValueError("Either 'lonlat' or 'index' must be specified.")
     Tplot, Qplot, QfQplot = calc_cdf(tf, tc)
@@ -91,13 +91,17 @@ def get_cdf(
 
 
 if __name__ == "__main__":
-
     # Example CDF ploting
 
     import matplotlib.pyplot as plt
 
-    clim = xr.open_zarr("reforecast/T2_weekly.zarr.zip")["T2"]
-    fcst = xr.open_zarr("T2.weekly.zarr.zip")["T2"]
+    clim = xr.open_zarr(
+        "/scratch/athippp/cylc-run/S2SF/run1/share/20240919T0000Z/viz/T2/stage/T2_weekmean_ensmembers_rf.zarr.zip"
+    )["T2"]
+    fcst = xr.open_zarr(
+        "/scratch/athippp/cylc-run/S2SF/run1/share/20240919T0000Z/viz/T2/stage/T2_weekmean_ensmembers.zarr.zip"
+    )["T2"]
+    print(clim)
     lon = 40.22
     lat = 20.66
     start_time = time.time()
