@@ -21,13 +21,6 @@
     initial cycle point = {{ initialCyclePoint }}
     final cycle point = {{ finalCyclePoint }}
     runahead limit = P20
-    [[queues]]
-        [[[main_queue]]]
-            limit = 120  
-            members = WRF
-        [[[batching_queue]]]
-            limit = 30
-            members = ACC2RATE, RAIN, RH2
 
     [[graph]]
         R1 = """
@@ -71,16 +64,13 @@
             ETC_DIR=${CYLC_WORKFLOW_RUN_DIR}/etc
             FIX_DIR=${CYLC_WORKFLOW_RUN_DIR}/fix
             FCST_START_TIME=${CYLC_TASK_CYCLE_POINT}
+            FCSTDURATION={{FCSTDURATION}}
 
             iyyyy=${FCST_START_TIME:0:4}
             imm=${FCST_START_TIME:4:2}
             idd=${FCST_START_TIME:6:2}
 
-            {% if test %}
-                GEO_EM_FILE=$FIX_DIR/geo_em.d01.nc_S2S_test
-            {% else %}
-                GEO_EM_FILE=$FIX_DIR/geo_em.d01.nc.S2S_4km_AG_24_flood
-            {% endif %}
+            GEO_EM_FILE=$FIX_DIR/geo_em.d01.nc.S2S_4km_AG_24_flood
 
     [[install7z]]
         script = """
@@ -130,6 +120,7 @@
     [[UNGRIB]]
         script = """
             rm -rf *
+            source get_dates.sh
             mkdir -p $MEM_SHARE_DIR/metgrid_inputs
             envsub $ETC_DIR/namelist.wps namelist.wps
             envsub $ETC_DIR/Vtable Vtable
@@ -153,6 +144,7 @@
     [[METGRID]]
         script = """
             rm -rf *
+            source get_dates.sh
             mkdir -p $MEM_SHARE_DIR/real_inputs
             envsub $ETC_DIR/namelist.wps namelist.wps
             mkdir metgrid 
@@ -184,6 +176,7 @@
         inherit = None, NAMELIST_INPUT
         script = """
             rm -rf *
+            source get_dates.sh
             mkdir -p $MEM_SHARE_DIR/wrf_input
             ln -sf $MEM_SHARE_DIR/real_inputs/* .
             # get the grid info from geo_em_file
@@ -211,6 +204,7 @@
         inherit = None, NAMELIST_INPUT
         script = """
             rm -rf *
+            source get_dates.sh
             mkdir -p $MEM_SHARE_DIR/wrf_out
             cp -f $em_real_dir/* .
             ln -sf $MEM_SHARE_DIR/wrf_input/* .

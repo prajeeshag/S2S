@@ -1,21 +1,14 @@
 #!jinja2
 
 {% set cpuPerNode=192 %}
-{% if test %}
-    {% set nio_groups=4 %}
-    {% set nio_tasks_per_group=2 %}
-    {% set nproc_x=10 %}
-    {% set nproc_y=10 %}
-{% else %}
-    {% set nio_groups=4 %}
-    {% set nio_tasks_per_group=16 %}
-    {% set nproc_x=64 %}
-    {% set nproc_y=56 %}
-{% endif %}
+{% set nio_groups=4 %}
+{% set nio_tasks_per_group=16 %}
+{% set nproc_x=64 %}
+{% set nproc_y=56 %}
 
 {% set cpuATM = nio_groups * nio_tasks_per_group + nproc_x * nproc_y  %}
 
-{% set projectid = "k10023" %}
+{% set projectid = "k10155" %}
 
 [scheduling]
     [[graph]]
@@ -91,11 +84,7 @@
     [[REAL]]
         execution time limit = PT3H
         [[[environment]]]
-            {% if test %}
-                run_cmd = "time srun -n 100"
-            {% else %}
-                run_cmd = "time srun -n {{ cpuPerNode }}"
-            {% endif %}
+            run_cmd = "time srun -n {{ cpuPerNode }}"
 
         [[[directives]]]
             --account={{projectid}}
