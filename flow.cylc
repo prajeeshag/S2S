@@ -251,7 +251,6 @@
             parallel --jobs ${NTASKS} < command.lst
         """
         [[[environment]]]
-            scripts_dir=
 
     [[ACC2RATE]]
         script = """
