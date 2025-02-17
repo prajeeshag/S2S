@@ -20,7 +20,7 @@
             module load craype-hugepages4M
             module load cray-netcdf
             # for wgrib, cdo, nco
-            export PATH="/scratch/masabas/iops/sw/micromamba/envs/operS2S/bin:$PATH"
+            export PATH="${MY_SW}/micromamba/envs/operS2S/bin:$PATH"
 
         """
         platform=shaheennew
@@ -34,9 +34,6 @@
     [[installCondaPkgs]]
         platform=shaheennew_login
         script = """
-            #export USER="masabas"
-            #export MY_SW="/scratch/${USER}/iops/sw"
-            #export MAMBA_EXE="${MY_SW}/miniconda3-amd64/condabin/mamba"
             export MAMBA_EXE="${MY_SW}/bin/micromamba"
             export MAMBA_ROOT_PREFIX="${MY_SW}/micromamba"
             echo "$MAMBA_EXE create -f $ETC_DIR/env.yaml -p $MY_SW/micromamba/envs/operS2S  -y"
@@ -139,3 +136,10 @@
     [[ACC2RATE, RH2, RAIN]]
         platform=shaheennew_login
 
+    [[push_data]]
+        platform=shaheennew_login
+        script = """
+            echo "Push data to vizualization server"
+            cd ${CYCLE_SHARE_DIR}/viz/
+            rsync -r -P * kw61469:/home/pammirp/data/live/ncm/subseasonal/
+        """

@@ -342,7 +342,7 @@
     [[VIZ]]
         # TODO: Hardcoded Reforecast
         script = """
-            output_dir=${CYCLE_SHARE_DIR}/viz/${fieldname}/stage
+            output_dir=${CYCLE_SHARE_DIR}/viz/${fieldname}
             mkdir -p $output_dir
             python -c 'import viz; viz.app()' ${fieldname} \
             "${CYCLE_SHARE_DIR}/F/mem*/merge_time/${input_file_name}" \
@@ -365,6 +365,13 @@
         [[[environment]]]
             fieldname=Rainfall
             input_file_name=surface_d01_RAIN_rate.nc
+    
+    [[push_data]]
+        script = """
+            echo "Push data to vizualization server"
+        """
+        [[[events]]]
+            mail events = succeeded
 
 
 {% include 'include/' ~ SITE ~ '/flow.cylc' %}
