@@ -1,5 +1,6 @@
 #!Jinja2
-{% from 'site.cylc' import initialCyclePoint, HMEMBERS, HYEARS, FMEMBERS, cycle, FCSTDURATION, SITE, FORCING_DATA_DIR, finalCyclePoint, ADMIN_EMAILS %}
+{% from 'site.cylc' import initialCyclePoint, HMEMBERS, HYEARS, FMEMBERS, cycles %}
+{% from 'site.cylc' import FCSTDURATION, SITE, FORCING_DATA_DIR, finalCyclePoint, ADMIN_EMAILS %}
 
 {% if graph is defined %}
     # For cylc graph set FMEMBERS = 2
@@ -20,19 +21,20 @@
 [scheduling]
     initial cycle point = {{ initialCyclePoint }}
     final cycle point = {{ finalCyclePoint }}
-    runahead limit = P20
-
+    runahead limit = P30
+    [[xtriggers]]
+        clock_S2S = wall_clock(offset=PT23H30M)
     [[graph]]
         R1 = """
             installWrfWps
             installCondaPkgs # TODO: bring to core from include
             install7z
         """
-
+{% for cycle in cycles %}
         {{cycle}} = """
 {% set members = '_F<mem>', '<rf><memh>' %}
 {% for member in members %}
-            installCondaPkgs[^] => get_forcing{{member}}
+            installCondaPkgs[^] & @clock_S2S => get_forcing{{member}}
             get_forcing{{member}} & installWrfWps[^] => ungrib{{member}}
             ungrib{{member}} => metgrid{{member}} => real{{member}} => wrf{{member}}
             wrf{{member}} => merge_time{{member}} => acc2rate{{member}}<acc2rate> => submit_acc2rate<acc2rate>
@@ -47,7 +49,9 @@
             # Cleanup Intermediate files
             merge_time{{member}} => clean_up{{member}}
 {% endfor %}
+
         """
+{% endfor %}
 
 [runtime]
 
