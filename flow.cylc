@@ -23,7 +23,7 @@
     final cycle point = {{ finalCyclePoint }}
     runahead limit = P30
     [[xtriggers]]
-        clock_S2S = wall_clock(offset=PT23H30M)
+        clock_S2S = wall_clock(offset=P1DT2H00M)
     [[graph]]
         R1 = """
             installWrfWps
