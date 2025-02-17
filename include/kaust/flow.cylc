@@ -8,7 +8,7 @@
 
 {% set cpuATM = nio_groups * nio_tasks_per_group + nproc_x * nproc_y  %}
 
-{% set projectid = "k10155" %}
+{% set projectid = "k10036" %}
 
 [scheduling]
     [[graph]]
@@ -20,29 +20,34 @@
             module load craype-hugepages4M
             module load cray-netcdf
             # for wgrib, cdo, nco
-            export PATH="/scratch/athippp/iops/micromamba/envs/operS2S/bin:$PATH"
+            export PATH="/scratch/masabas/iops/sw/micromamba/envs/operS2S/bin:$PATH"
 
         """
-        platform=shaheen
+        platform=shaheennew
         [[[environment]]]
-            WPS_DIR=/scratch/athippp/iops/S2S/WPS
-            WRF_DIR=/scratch/athippp/iops/S2S/WRF
+            WPS_DIR=${MY_SW}/S2S/WPS
+            WRF_DIR=${MY_SW}/S2S/WRF
     
     [[install7z]]
-        platform=shaheen_login
+        platform=shaheennew_login
 
     [[installCondaPkgs]]
-        platform=shaheen_login
+        platform=shaheennew_login
         script = """
-            export MAMBA_EXE='/scratch/athippp/iops/bin/micromamba'
-            export MAMBA_ROOT_PREFIX='/scratch/athippp/iops/micromamba'
-            $MAMBA_EXE create -f $ETC_DIR/env.yaml -p /scratch/athippp/iops/micromamba/envs/operS2S  -y
+            #export USER="masabas"
+            #export MY_SW="/scratch/${USER}/iops/sw"
+            #export MAMBA_EXE="${MY_SW}/miniconda3-amd64/condabin/mamba"
+            export MAMBA_EXE="${MY_SW}/bin/micromamba"
+            export MAMBA_ROOT_PREFIX="${MY_SW}/micromamba"
+            echo "$MAMBA_EXE create -f $ETC_DIR/env.yaml -p $MY_SW/micromamba/envs/operS2S  -y"
+            $MAMBA_EXE create -f $ETC_DIR/env.yaml -p $MY_SW/micromamba/envs/operS2S  -y
+            echo "$MAMBA_EXE create -f ${CYLC_WORKFLOW_RUN_DIR}/etc/env.yaml -p $MY_SW/micromamba/envs/operS2S  -y"
         """
 
     [[installWrfWps]]
-        platform=shaheen_login
+        platform=shaheennew_login
         script="""
-            mkdir -p $WRF_DIR
+	     mkdir -p $WRF_DIR
 
             if [ -e $WRF_DIR/main/real.exe ] && \
                 [ -e $WRF_DIR/main/wrf.exe ] && \
@@ -59,11 +64,19 @@
             export NETCDF_classic=1
             ./configure <<< "50"
             sed -i 's/# -DRSL0_ONLY/-DRSL0_ONLY/g' ./configure.wrf
+            sed -i 's/SCC             =       icc/SCC             =       cc/g' ./configure.wrf
+            sed -i 's/CCOMP           =       icc/CCOMP           =       cc/g' ./configure.wrf
+            sed -i 's/DM_CC           =       icc/DM_CC           =       cc/g' ./configure.wrf
             sed -i 's/nproc_x .LT. 10/nproc_x .LT. 1/' share/module_check_a_mundo.F
             sed -i 's/nproc_y .LT. 10/nproc_y .LT. 1/' share/module_check_a_mundo.F
             ./compile -j 8 em_real
             cd -
-            
+	    echo "   "            
+	    echo "   "            
+	    echo "   "            
+	    echo "Starting WPS:"            
+	    echo "   "            
+	    echo "   "            
             rm -rf WPS
             git clone --branch release-v4.5 --depth 1 --single-branch  https://github.com/wrf-model/WPS.git 
             cd WPS
@@ -124,4 +137,7 @@
             NTASKS={{cpuPerNode}}
 
     [[ACC2RATE, RH2, RAIN]]
-        platform=shaheen_login
+        platform=shaheennew_login
+
+    [[testprint]]
+        platform=shaheennew_login

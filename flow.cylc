@@ -1,5 +1,5 @@
 #!Jinja2
-{% from 'site.cylc' import initialCyclePoint, HMEMBERS, HYEARS, FMEMBERS, cycle, FCSTDURATION, SITE, FORCING_DATA_DIR, finalCyclePoint %}
+{% from 'site.cylc' import initialCyclePoint, HMEMBERS, HYEARS, FMEMBERS, cycle, FCSTDURATION, SITE, FORCING_DATA_DIR, finalCyclePoint, ADMIN_EMAILS %}
 
 {% if graph is defined %}
     # For cylc graph set FMEMBERS = 2
@@ -53,7 +53,7 @@
 
     [[root]]
         [[[mail]]]
-            to = prajeesh.athippattagopinathan@kaust.edu.sa
+            to = {{ ADMIN_EMAILS }}
         [[[events]]]
             mail events = failed
         [[[environment]]]
@@ -361,7 +361,6 @@
         [[[environment]]]
             fieldname=Rainfall
             input_file_name=surface_d01_RAIN_rate.nc
-
 
 
 {% include 'include/' ~ SITE ~ '/flow.cylc' %}
