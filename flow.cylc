@@ -1,5 +1,5 @@
 #!Jinja2
-{% from 'site.cylc' import initialCyclePoint, HMEMBERS, HYEARS, FMEMBERS, cycle %}
+{% from 'site.cylc' import initialCyclePoint, HMEMBERS, HYEARS, FMEMBERS, cycles %}
 {% from 'site.cylc' import FCSTDURATION, SITE, FORCING_DATA_DIR, finalCyclePoint, ADMIN_EMAILS %}
 
 {% if graph is defined %}
@@ -29,7 +29,7 @@
             installCondaPkgs # TODO: bring to core from include
             install7z
         """
-
+{% for cycle in cycles %}
         {{cycle}} = """
 {% set members = '_F<mem>', '<rf><memh>' %}
 {% for member in members %}
@@ -48,6 +48,8 @@
             # Cleanup Intermediate files
             merge_time{{member}} => clean_up{{member}}
 {% endfor %}
+{% endfor %}
+
         """
 
 [runtime]

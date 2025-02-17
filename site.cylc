@@ -5,7 +5,8 @@
 {% set FORECAST_DATE = '2024-11-25' %}
 {% set initialCyclePoint = '2024-11-25' %}
 {% set finalCyclePoint = '2024-11-25' %}
-{% set cycle = "R1" %}
+##{% set cycles = "P1W", R/^+P3D/P1W %}
+{% set cycles = "R1" %}
 {% set FCSTDURATION = "P46D" %}
 {% set FORCING_DATA_DIR='/scratch/masabas/k10021/k1477/masabas/workS2S/ecmwfs2s' %}
 {% set REFORECAST = False %}
