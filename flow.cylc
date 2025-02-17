@@ -23,7 +23,7 @@
     final cycle point = {{ finalCyclePoint }}
     runahead limit = P30
     [[xtriggers]]
-        clock_S2S = wall_clock(offset=PT23H30M)
+        clock_S2S = wall_clock(offset=P1DT2H00M)
     [[graph]]
         R1 = """
             installWrfWps
@@ -45,6 +45,7 @@
             merge_time{{member}} & install7z[^] & installCondaPkgs[^] => viz<vizfld>
             submit_rain => viz_Rainfall
             submit_rh2 => viz_RH2
+	    viz<vizfld> => push_data
 
             # Cleanup Intermediate files
             merge_time{{member}} => clean_up{{member}}
@@ -342,7 +343,7 @@
     [[VIZ]]
         # TODO: Hardcoded Reforecast
         script = """
-            output_dir=${CYCLE_SHARE_DIR}/viz/${fieldname}
+            output_dir=${CYCLE_SHARE_DIR}/viz/${fieldname}/stage
             mkdir -p $output_dir
             python -c 'import viz; viz.app()' ${fieldname} \
             "${CYCLE_SHARE_DIR}/F/mem*/merge_time/${input_file_name}" \

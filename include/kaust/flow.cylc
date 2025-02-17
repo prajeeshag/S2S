@@ -141,5 +141,5 @@
         script = """
             echo "Push data to vizualization server"
             cd ${CYCLE_SHARE_DIR}/viz/
-            rsync -r -P * kw61469:/home/pammirp/data/live/ncm/subseasonal/
+            rsync -r -P * kw61469:~/data/live/ncm/subseasonal/
         """
