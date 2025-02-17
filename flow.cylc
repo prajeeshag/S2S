@@ -285,7 +285,7 @@
             mkdir -p $scriptsdir
             jobscript=$scriptsdir/${CYLC_TASK_NAME}.sh
             # RH=0.263*PSFC*Q2/exp(17.67*(T2-273.15)/(T2-29.65))
-            echo "cdo -setname,RH2 -div [ -mulc,0.263 -mul $PSFC $Q2 -exp [ -div [ -mulc,17.67 -subc,273.15 $T2 -subc,29.65 $T2 ] ] ] $RH" > $jobscript
+            echo "cdo -setattribute,RH2@description="RH at 2m" -setname,RH2  -div [ -mulc,0.263 -mul $PSFC $Q2 -exp [ -div [ -mulc,17.67 -subc,273.15 $T2 -subc,29.65 $T2 ] ] ] $RH" > $jobscript
             chmod +x $jobscript
         """
         [[[environment]]]
