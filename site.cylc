@@ -1,9 +1,9 @@
 {% set SITE='kaust' %}
-{% set FMEMBERS = 11 %}  #51
-{% set HMEMBERS = 2 %}   #11
+{% set FMEMBERS = 51 %}  #51
+{% set HMEMBERS = 11 %}   #11
 {% set HYEARS = 20 %}
 {% set initialCyclePoint = '2025-02-17' %}
-{% set finalCyclePoint = '2025-03-17' %}
+{% set finalCyclePoint = '2025-02-27' %}
 {% set cycles = "P1W", "R/^+P3D/P1W" %}
 {% set FCSTDURATION = "P46D" %}
 {% set FORCING_DATA_DIR='/scratch/masabas/k10021/k1477/masabas/workS2S/ecmwfs2s' %}
