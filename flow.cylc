@@ -45,7 +45,7 @@
             merge_time{{member}} & install7z[^] & installCondaPkgs[^] => viz<vizfld>
             submit_rain => viz_Rainfall
             submit_rh2 => viz_RH2
-            viz<vizfld> => push_data
+            viz<vizfld> => create_meta_data => push_data
 
             # Cleanup Intermediate files
             merge_time{{member}} => clean_up{{member}}

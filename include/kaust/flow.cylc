@@ -133,7 +133,7 @@
         [[[environment]]]
             NTASKS={{cpuPerNode}}
 
-    [[ACC2RATE, RH2, RAIN]]
+    [[ACC2RATE, RH2, RAIN, create_meta_data]]
         platform=shaheennew_login
 
     [[push_data]]
