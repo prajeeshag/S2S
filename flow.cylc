@@ -367,6 +367,12 @@
         [[[environment]]]
             fieldname=Rainfall
             input_file_name=surface_d01_RAIN_rate.nc
+
+    [[create_meta_data]]
+        script="""
+            cd ${CYCLE_SHARE_DIR}/viz/
+            create_meta_data.sh
+        """
     
     [[push_data]]
         script = """
