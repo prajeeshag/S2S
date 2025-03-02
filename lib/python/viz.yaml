@@ -71,12 +71,14 @@ fields:
           ensmembers_rf: zarr
 
       - time_aggregation: null
+        skip_week: false
         ens_stats:
           enspctl: *pctl_defaults
         file_type:
           enspctl: zarr
 
       - time_aggregation: daymax
+        skip_week: false
         ens_stats:
           <<: *ens_stat_defaults
           ensprob_gtc: *rh2_gtc
@@ -88,6 +90,7 @@ fields:
           ensprob_gtc: zarr
 
       - time_aggregation: daymin
+        skip_week: false
         ens_stats:
           <<: *ens_stat_defaults
           ensprob_ltc: *rh2_ltc
@@ -124,12 +127,14 @@ fields:
           ensmembers_rf: zarr
 
       - time_aggregation: null
+        skip_week: false
         ens_stats:
           enspctl: *pctl_defaults
         file_type:
           enspctl: zarr
 
       - time_aggregation: daymax
+        skip_week: false
         ens_stats:
           <<: *ens_stat_defaults
           ensprob_gtc: *temp_gtc
@@ -141,6 +146,7 @@ fields:
           ensprob_gtc: zarr
 
       - time_aggregation: daymin
+        skip_week: false
         ens_stats:
           <<: *ens_stat_defaults
           ensprob_ltc: *temp_ltc
@@ -182,6 +188,7 @@ fields:
           ensprob_gtc: zarr
 
       - time_aggregation: daycumsum
+        skip_week: false
         ens_stats:
           <<: *ens_stat_defaults
         file_type:
