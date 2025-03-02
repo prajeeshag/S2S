@@ -113,7 +113,7 @@ def plot_efi(file_name, var_name):
         )
 
         # Save the plot
-        plt.savefig(f"{file_name}_efi.png", dpi=200, bbox_inches="tight")
+        plt.savefig(f"{file_name}_efi_t{t}.png", dpi=200, bbox_inches="tight")
         plt.close()
 
 
