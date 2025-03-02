@@ -2,6 +2,7 @@ import cartopy.crs as ccrs
 import matplotlib.colors as mpc
 import matplotlib.pyplot as plt
 import typer
+import xarray as xr
 
 app = typer.Typer()
 
@@ -113,3 +114,7 @@ def plot_efi(file_name, var_name):
         # Save the plot
         plt.savefig(f"{file_name}_efi.png", dpi=200, bbox_inches="tight")
         plt.close()
+
+
+if __name__ == "__main__":
+    app()
