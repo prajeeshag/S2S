@@ -73,6 +73,7 @@ def plot_efi(file_name, var_name):
     norm = mpc.BoundaryNorm(lvls, efi_cmap.N)
 
     for t in range(efi_.shape[0]):
+        print(f"ploting {var_name} for time {t}")
         # Plot setup
         proj = ccrs.PlateCarree()
         fig, ax = plt.subplots(figsize=(8, 6), subplot_kw={"projection": proj})
