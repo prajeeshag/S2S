@@ -7,7 +7,7 @@ import xarray as xr
 app = typer.Typer()
 
 
-@app.command
+@app.command()
 def plot_efi(file_name, var_name):
     """
     Plot the Extreme Forecast Index (EFI) with Shift Of Tails (SOT).
