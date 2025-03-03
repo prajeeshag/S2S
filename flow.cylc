@@ -35,7 +35,7 @@
 {% set members = '_F<mem>', '<rf><memh>' %}
 {% for member in members %}
             installCondaPkgs[^] & @clock_S2S => get_forcing{{member}}
-            get_forcing{{member}} & installWrfWps[^] => ungrib{{member}}
+            GET_FORCING:succeed-all & installWrfWps[^] => ungrib{{member}}
             ungrib{{member}} => metgrid{{member}} => real{{member}} => wrf{{member}}
             wrf{{member}} => merge_time{{member}} => acc2rate{{member}}<acc2rate> => submit_acc2rate<acc2rate>
             submit_acc2rate_RAINC & submit_acc2rate_RAINNC => rain{{member}} => submit_rain
