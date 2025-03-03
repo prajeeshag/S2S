@@ -101,17 +101,6 @@ def plot_efi(file_name, var_name):
             pad=30,
         )
 
-        # Add attribution and logos
-        ax.text(
-            -0.05,
-            -0.1,
-            "© 2025 Climate Change Center - National Center for Meteorology",
-            transform=ax.transAxes,
-            fontsize=8,
-            va="top",
-            ha="left",
-        )
-
         # Save the plot
         plt.savefig(f"{file_name}_efi_t{t}.png", dpi=200, bbox_inches="tight")
         plt.close()

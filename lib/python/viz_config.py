@@ -167,7 +167,7 @@ class FileType(Enum):
 
 class TimeStat(VizConfig):
     time_aggregation: TimeAggregation | None = None
-    skip_week: True
+    skip_week: bool = True
     ens_stats: dict[str, EnsStat]
     file_type: dict[str, FileType]
 

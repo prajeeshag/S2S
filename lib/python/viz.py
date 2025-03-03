@@ -750,14 +750,14 @@ def compute_sot(
 
 
 def calc_sotp(
-    tf: np.ndarray, tc: np.ndarray, quantile_method: str = "quick"
+    tf: np.ndarray, tc: np.ndarray, quantile_method: str = "precise"
 ) -> np.ndarray:
     """Calculate Positive Shift Of Tail (SOT)."""
     return compute_sot(tf, tc, quantile_method, tail="pos")
 
 
 def calc_sotn(
-    tf: np.ndarray, tc: np.ndarray, quantile_method: str = "quick"
+    tf: np.ndarray, tc: np.ndarray, quantile_method: str = "precise"
 ) -> np.ndarray:
     """Calculate Negative Shift Of Tail (SOT)."""
     return compute_sot(tf, tc, quantile_method, tail="neg")
@@ -911,3 +911,7 @@ def calc_efi1d(inp: tuple[np.ndarray, np.ndarray]) -> np.ndarray:
     frac = (q - qfq) / np.sqrt(q * (1 - q))
     efi = 2 / math.pi * np.trapezoid(frac, x=q)
     return efi
+
+
+if __name__ == "__main__":
+    app()
