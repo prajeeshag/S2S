@@ -46,6 +46,7 @@
             submit_rain => viz_Rainfall
             submit_rh2 => viz_RH2
             viz<vizfld> => create_meta_data => push_data
+            viz<vizfld> => plot_viz_data<vizfld>
 
             # Cleanup Intermediate files
             merge_time{{member}} => clean_up{{member}}
@@ -380,6 +381,14 @@
         """
         [[[events]]]
             mail events = succeeded
+
+    [[plot_viz_data<vizfld>]]
+        script = """
+            ${CYCLE_SHARE_DIR}/viz/
+            python -c 'import plot_viz; plot_viz.app()' plot_efi $fieldname/live/${fieldname}_weekmean ${fieldname}
+        """
+        [[[environment]]]
+            fieldname=$CYLC_TASK_PARAM_vizfld
 
 
 {% include 'include/' ~ SITE ~ '/flow.cylc' %}

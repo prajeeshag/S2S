@@ -451,6 +451,7 @@ def process(
     config: TimeStat,
     fcst_files: list[str],
     refcst_files: list[str],
+    week_start,
 ):
     time_coarsen_cdoinput = ""
     if config.time_aggregation is not None:
@@ -458,7 +459,13 @@ def process(
 
     time_coarsen_name = config.time_aggregation.name if config.time_aggregation else ""
 
-    preprocess_opr = f"{post_cdoinput} {time_coarsen_cdoinput} {pre_cdoinput}"
+    skip_week = ""
+    if config.skip_week:
+        skip_week = get_cdoinput_seltimestep(fcst_files[0], week_start)
+
+    preprocess_opr = (
+        f"{post_cdoinput} {time_coarsen_cdoinput} {skip_week} {pre_cdoinput}"
+    )
 
     if config.reforecast_needed:
         logger.info(f"Reforecast files for {vname} needed")
@@ -678,11 +685,17 @@ def main(
 
     # create a lat-lon griddes file by infering the nominal resolution from XLAT, XLONG
     post_opr = get_cdoinput_preprocess(vname, config, fcst_files)
-
-    pre_opr = get_cdoinput_seltimestep(fcst_files[0], config.preprocess.week_start)
-
+    pre_opr = ""
     for stat in config.stat:
-        process(vname, pre_opr, post_opr, stat, fcst_files, refcst_files)
+        process(
+            vname,
+            pre_opr,
+            post_opr,
+            stat,
+            fcst_files,
+            refcst_files,
+            config.preprocess.week_start,
+        )
 
 
 def calc_efi(
@@ -701,62 +714,53 @@ def calc_efi(
     return efi
 
 
-def calc_sotp(tf, tc, quantile_method="quick"):
+def compute_sot(
+    tf: np.ndarray, tc: np.ndarray, quantile_method: str, tail: str
+) -> np.ndarray:
     """
-    Calculate the Shift Of Tail (SOT) based on sorted climate and forecast data.
-
+    Compute the Shift Of Tail (SOT) for climate and forecast data.
     Parameters:
-    - Tf: Sorted forecast data
-    - Tc: Sorted climate data
+    - tf: Sorted forecast data (2D array)
+    - tc: Sorted climate data (2D array)
     - quantile_method: Method to calculate quantiles ('quick' or 'precise')
+    - tail: 'pos' for positive shift, 'neg' for negative shift
 
     Returns:
-    - SOT_pos: Positive Shift Of Tail
+    - SOT: Shift Of Tail (masked array with smoothed values)
     """
-    # Determine the number of forecast ensembles and climate records
     nens, cens = tf.shape[0], tc.shape[0]
-    # Define quantiles
+
+    # Define quantile indices based on tail type
+    quantiles = {"pos": (0.9, 0.99), "neg": (0.1, 0.01)}
+    q_low, q_high = quantiles[tail]
+
     if quantile_method == "quick":
-        qc90 = tc[int(cens * 0.9) - 1]
-        qc99 = tc[int(cens * 0.99) - 1]
-        qf90 = tf[int(nens * 0.9) - 1]
+        qc_low = tc[int(cens * q_low) - 1]
+        qc_high = tc[int(cens * q_high) - 1]
+        qf_low = tf[int(nens * q_low) - 1]
     else:
-        qc90, qc99 = np.nanquantile(tc, [0.9, 0.99], axis=0)
-        qf90 = np.nanquantile(tf, 0.9, axis=0)
-    # Calculate SOT
-    sot_pos = (qf90 - qc99) / (qc99 - qc90)
-    # Mask invalid values and smooth contours
-    sot_pos_sm = np.ma.masked_invalid(ndimage.gaussian_filter(sot_pos, sigma=1.5))
-    return sot_pos_sm
+        qc_low, qc_high = np.nanquantile(tc, [q_low, q_high], axis=0)
+        qf_low = np.nanquantile(tf, q_low, axis=0)
+
+    # Compute Shift Of Tail
+    sot = (qf_low - qc_high) / (qc_high - qc_low)
+    sot_sm = np.ma.masked_invalid(ndimage.gaussian_filter(sot, sigma=1.5))
+
+    return sot_sm
 
 
-def calc_sotn(tf, tc, quantile_method="quick"):
-    """
-    Calculate the Shift Of Tail (SOT) based on sorted climate and forecast data.
+def calc_sotp(
+    tf: np.ndarray, tc: np.ndarray, quantile_method: str = "precise"
+) -> np.ndarray:
+    """Calculate Positive Shift Of Tail (SOT)."""
+    return compute_sot(tf, tc, quantile_method, tail="pos")
 
-    Parameters:
-    - Tf: Sorted forecast data
-    - Tc: Sorted climate data
-    - quantile_method: Method to calculate quantiles ('quick' or 'precise')
 
-    Returns:
-    - SOT_neg: Negative Shift Of Tail
-    """
-    # Determine the number of forecast ensembles and climate records
-    nens, cens = tf.shape[0], tc.shape[0]
-    # Define quantiles
-    if quantile_method == "quick":
-        qc10 = tc[int(cens * 0.1) - 1]
-        qc1 = tc[int(cens * 0.01) - 1]
-        qf10 = tf[int(nens * 0.1) - 1]
-    else:
-        qc10, qc1 = np.nanquantile(tc, [0.1, 0.01], axis=0)
-        qf10 = np.nanquantile(tf, 0.1, axis=0)
-    # Calculate SOT
-    sot_neg = (qf10 - qc1) / (qc1 - qc10)
-    # Mask invalid values and smooth contours
-    sot_neg_sm = np.ma.masked_invalid(ndimage.gaussian_filter(sot_neg, sigma=1.5))
-    return sot_neg_sm
+def calc_sotn(
+    tf: np.ndarray, tc: np.ndarray, quantile_method: str = "precise"
+) -> np.ndarray:
+    """Calculate Negative Shift Of Tail (SOT)."""
+    return compute_sot(tf, tc, quantile_method, tail="neg")
 
 
 def preprocess_times(ds):
@@ -907,3 +911,7 @@ def calc_efi1d(inp: tuple[np.ndarray, np.ndarray]) -> np.ndarray:
     frac = (q - qfq) / np.sqrt(q * (1 - q))
     efi = 2 / math.pi * np.trapezoid(frac, x=q)
     return efi
+
+
+if __name__ == "__main__":
+    app()
