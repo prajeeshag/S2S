@@ -390,5 +390,12 @@
         [[[environment]]]
             fieldname=$CYLC_TASK_PARAM_vizfld
 
+    [[plot_viz_data_Rainfall]]
+        script = """
+            cd ${CYCLE_SHARE_DIR}/viz/
+            python -c 'import plot_viz; plot_viz.app()' $fieldname/live/Rainfall_weeksum Rainfall
+        """
+        [[[environment]]]
+            fieldname=$CYLC_TASK_PARAM_vizfld
 
 {% include 'include/' ~ SITE ~ '/flow.cylc' %}
