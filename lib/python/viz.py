@@ -405,7 +405,7 @@ def get_time_as_dates(nc_file_path: str, format="%Y-%m-%d") -> list[str]:
         return ds["Times"].dt.strftime(format).values.tolist()
 
 
-def get_cdoinput_seltimestep(file: str, weekday: WeekDay):
+def get_cdoinput_seltimestep(file: str, weekday: WeekDay, skip_week: bool):
     # Open the NetCDF file using xarray
     timestamps = get_time_as_dates(file)
     start_weekday = get_weekday(timestamps[0])
@@ -424,6 +424,9 @@ def get_cdoinput_seltimestep(file: str, weekday: WeekDay):
 
     if start_time_step is None or end_time_step is None:
         raise ValueError("Failed to find start or end time step")
+
+    if not skip_week:
+        start_time_step = 1
 
     return f" -seltimestep,{start_time_step}/{end_time_step}"
 
@@ -459,12 +462,12 @@ def process(
 
     time_coarsen_name = config.time_aggregation.name if config.time_aggregation else ""
 
-    skip_week = ""
-    if config.skip_week:
-        skip_week = get_cdoinput_seltimestep(fcst_files[0], week_start)
+    skip_week_cdoinput = get_cdoinput_seltimestep(
+        fcst_files[0], week_start, config.skip_week
+    )
 
     preprocess_opr = (
-        f"{post_cdoinput} {time_coarsen_cdoinput} {skip_week} {pre_cdoinput}"
+        f"{post_cdoinput} {time_coarsen_cdoinput} {skip_week_cdoinput} {pre_cdoinput}"
     )
 
     if config.reforecast_needed:
