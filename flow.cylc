@@ -385,7 +385,7 @@
     [[plot_viz_data<vizfld>]]
         script = """
             cd ${CYCLE_SHARE_DIR}/viz/
-            python -c 'import plot_viz; plot_viz.app()' plot_efi $fieldname/live/${fieldname}_weekmean ${fieldname}
+            python -c 'import plot_viz; plot_viz.app()' $fieldname/live/${fieldname}_weekmean ${fieldname}
         """
         [[[environment]]]
             fieldname=$CYLC_TASK_PARAM_vizfld
