@@ -40,7 +40,7 @@
         {{cycle}} = """
 {% for member in members %}
             installCondaPkgs[^] & @clock_S2S => get_forcing{{member}}
-            GET_FORCING:succeed-all & installWrfWps[^] => ungrib{{member}}
+            get_forcing{{member}} & installWrfWps[^] => ungrib{{member}}
             ungrib{{member}} => metgrid{{member}} => real{{member}} => wrf{{member}}
             wrf{{member}} => merge_time{{member}} => acc2rate{{member}}<acc2rate> => submit_acc2rate<acc2rate>
             submit_acc2rate_RAINC & submit_acc2rate_RAINNC => rain{{member}} => submit_rain
@@ -51,7 +51,7 @@
             submit_rain => viz_Rainfall
             submit_rh2 => viz_RH2
             viz<vizfld> => create_meta_data => push_data
-            viz<vizfld> => plot_viz_data<vizfld>
+# temporary stop            viz<vizfld> => plot_viz_data<vizfld>
 
             # Cleanup Intermediate files
             merge_time{{member}} => clean_up{{member}}

@@ -8,7 +8,7 @@
 
 {% set cpuATM = nio_groups * nio_tasks_per_group + nproc_x * nproc_y  %}
 
-{% set projectid = "k10036" %}
+{% set projectid = "k10181" %}
 
 [scheduling]
     [[graph]]
