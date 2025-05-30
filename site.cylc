@@ -3,8 +3,8 @@
 {% set HMEMBERS = 11 %}   #11
 {% set HYEARS = 20 %}
 {% set REFORECAST = 0 %}
-{% set initialCyclePoint = '2025-03-27' %}
-{% set finalCyclePoint = '2025-03-31' %}
+{% set initialCyclePoint = '2025-05-29' %}
+{% set finalCyclePoint = '2025-06-02' %}
 {% set cycles = "P1W", "R/^+P4D/P1W" %}
 {% set FCSTDURATION = "P46D" %}
 {% set FORCING_DATA_DIR='/scratch/masabas/k10021/k1477/masabas/workS2S/ecmwfs2s' %}
