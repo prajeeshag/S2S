@@ -1,5 +1,5 @@
 #!Jinja2
-{% from 'site.cylc' import initialCyclePoint, HMEMBERS, HYEARS, FMEMBERS, cycles %}
+{% from 'site.cylc' import initialCyclePoint, HMEMBERS, HYEARS, FMEMBERS, cycles, REFORECAST %}
 {% from 'site.cylc' import FCSTDURATION, SITE, FORCING_DATA_DIR, finalCyclePoint, ADMIN_EMAILS %}
 
 {% if graph is defined %}
@@ -30,12 +30,17 @@
             installCondaPkgs # TODO: bring to core from include
             install7z
         """
+{% if REFORECAST > 0 %}
+    {% set members = '_F<mem>', '<rf><memh>' %}
+{% else %}
+    {% set members = '_F<mem>', %}
+{% endif %}
+
 {% for cycle in cycles %}
         {{cycle}} = """
-{% set members = '_F<mem>', '<rf><memh>' %}
 {% for member in members %}
             installCondaPkgs[^] & @clock_S2S => get_forcing{{member}}
-            GET_FORCING:succeed-all & installWrfWps[^] => ungrib{{member}}
+            get_forcing{{member}} & installWrfWps[^] => ungrib{{member}}
             ungrib{{member}} => metgrid{{member}} => real{{member}} => wrf{{member}}
             wrf{{member}} => merge_time{{member}} => acc2rate{{member}}<acc2rate> => submit_acc2rate<acc2rate>
             submit_acc2rate_RAINC & submit_acc2rate_RAINNC => rain{{member}} => submit_rain
@@ -46,7 +51,7 @@
             submit_rain => viz_Rainfall
             submit_rh2 => viz_RH2
             viz<vizfld> => create_meta_data => push_data
-            viz<vizfld> => plot_viz_data<vizfld>
+# temporary stop            viz<vizfld> => plot_viz_data<vizfld>
 
             # Cleanup Intermediate files
             merge_time{{member}} => clean_up{{member}}
@@ -390,5 +395,12 @@
         [[[environment]]]
             fieldname=$CYLC_TASK_PARAM_vizfld
 
+    [[plot_viz_data_Rainfall]]
+        script = """
+            cd ${CYCLE_SHARE_DIR}/viz/
+            python -c 'import plot_viz; plot_viz.app()' $fieldname/live/Rainfall_weeksum Rainfall
+        """
+        [[[environment]]]
+            fieldname=$CYLC_TASK_PARAM_vizfld
 
 {% include 'include/' ~ SITE ~ '/flow.cylc' %}

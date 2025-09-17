@@ -8,7 +8,7 @@
 
 {% set cpuATM = nio_groups * nio_tasks_per_group + nproc_x * nproc_y  %}
 
-{% set projectid = "k10036" %}
+{% set projectid = "k10189" %}
 
 [scheduling]
     [[graph]]
@@ -116,7 +116,7 @@
             nproc_x={{ nproc_x }}
             nproc_y={{ nproc_y }}
 
-    [[UNGRIB, METGRID, GET_FORCING, MERGE_TIME]]
+    [[UNGRIB, METGRID, GET_FORCING, MERGE_TIME, CLEAN_UP]]
         execution time limit = PT3H
         [[[directives]]]
             --account={{projectid}}
@@ -133,7 +133,7 @@
         [[[environment]]]
             NTASKS={{cpuPerNode}}
 
-    [[ACC2RATE, RH2, RAIN, create_meta_data]]
+    [[ACC2RATE, RH2, RAIN, create_meta_data, plot_viz_data<vizfld>]]
         platform=shaheennew_login
 
     [[push_data]]
