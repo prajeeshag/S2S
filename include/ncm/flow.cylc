@@ -1,0 +1,112 @@
+#!jinja2
+
+{% set cpuPerNode=64 %}
+{% set nio_groups=4 %}
+{% set nio_tasks_per_group=16 %}
+{% set nproc_x=32 %}
+{% set nproc_y=32 %}
+
+{% set cpuATM = nio_groups * nio_tasks_per_group + nproc_x * nproc_y  %}
+
+[scheduling]
+    [[graph]]
+
+[runtime]
+    [[root]]
+        init-script = """
+            module load oneapi/2023.0.0
+            module load compiler/2023.0.0
+            module load mpi/2021.8.0
+            module load netcdf/4.7.4/intel2023.0
+            #module load hdf5/1.8.12-with-zlib/intel2023.0
+            export PATH="${HOME}/micromamba/envs/operS2S/bin:$PATH"
+        """
+        platform=cluster
+        [[[environment]]]
+            WPS_DIR=${HOME}/work/S2S/WPS
+            WRF_DIR=${HOME}/work/S2S/WRF
+
+    [[install7z]]
+        platform=localhost
+
+    [[installWrfWps]]
+        platform=localhost
+
+    [[installCondaPkgs]]
+        platform=localhost
+        script = """
+            export MAMBA_EXE="${HOME}/.local/bin/micromamba"
+            export MAMBA_ROOT_PREFIX="${HOME}/micromamba"
+            echo "$MAMBA_EXE create -f $ETC_DIR/env.yaml -p $HOME/micromamba/envs/operS2S  -y"
+            $MAMBA_EXE create -f $ETC_DIR/env.yaml -p $HOME/micromamba/envs/operS2S  -y
+            echo "$MAMBA_EXE create -f ${CYLC_WORKFLOW_RUN_DIR}/etc/env.yaml -p $HOME/micromamba/envs/operS2S  -y"
+        """
+
+    [[METGRID]]
+        [[[environment]]]
+            run_cmd="srun"
+
+    [[REAL]]
+        execution time limit = PT3H
+        init-script = """
+            module load oneapi/2023.0.0
+            module load compiler/2023.0.0
+            module load mpi/2021.8.0
+            module load netcdf/4.7.4/intel2023.0
+            module load hdf5/1.8.12-with-zlib/intel2023.0
+            export PATH="${HOME}/micromamba/envs/operS2S/bin:$PATH"
+        """
+        [[[environment]]]
+            run_cmd = "srun -n {{ cpuPerNode }}"
+
+        [[[directives]]]
+            --nodes = 1
+            --ntasks = {{ cpuPerNode }}
+
+    [[WRF]]
+        execution time limit = PT24H
+        init-script = """
+            module load oneapi/2023.0.0
+            module load compiler/2023.0.0
+            module load mpi/2021.8.0
+            module load netcdf/4.7.4/intel2023.0
+            module load hdf5/1.8.12-with-zlib/intel2023.0
+            export PATH="${HOME}/micromamba/envs/operS2S/bin:$PATH"
+        """
+        [[[directives]]]
+            {% set nodes = (cpuATM + cpuPerNode - 1) // cpuPerNode %}
+            --nodes={{ nodes }}
+            --ntasks={{ cpuATM }}
+        [[[environment]]]
+            FI_CXI_RX_MATCH_MODE=hybrid
+            run_cmd = "srun -n {{ cpuATM }} --distribution=block:block --hint=nomultithread"
+            nio_groups={{ nio_groups }}
+            nio_tasks_per_group={{ nio_tasks_per_group }}
+            nproc_x={{ nproc_x }}
+            nproc_y={{ nproc_y }}
+    [[UNGRIB, METGRID, GET_FORCING, MERGE_TIME, CLEAN_UP]]
+        execution time limit = PT3H
+        [[[directives]]]
+            --ntasks = 1
+            # --partition=shared
+            --mem=8G
+
+    [[viz<vizfld>, SUBMIT_BATCH]]
+        execution time limit = PT3H
+        [[[directives]]]
+            --nodes = 1
+            --ntasks = {{cpuPerNode}}
+        [[[environment]]]
+            NTASKS={{cpuPerNode}}
+
+    [[ACC2RATE, RH2, RAIN, create_meta_data, plot_viz_data<vizfld>]]
+
+    [[push_data]]
+        platform=localhost
+
+        script = """
+            echo "Push data to vizualization server"
+            cd ${CYCLE_SHARE_DIR}/viz/
+            mkdir -p ${HOME}/data/live/ncm/subseasonal
+            rsync -r -P * ${HOME}/data/live/ncm/subseasonal
+        """

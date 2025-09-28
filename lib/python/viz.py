@@ -21,15 +21,8 @@ from cdo import Cdo
 from dask import config as cfg
 from dask.distributed import Client, LocalCluster, get_worker
 from scipy import ndimage, stats
-from viz_config import (
-    EnsStat,
-    EnsStatOpr,
-    FileType,
-    RemapMethod,
-    TimeStat,
-    WeekDay,
-    get_config,
-)
+from viz_config import (EnsStat, EnsStatOpr, FileType, RemapMethod, TimeStat,
+                        WeekDay, get_config)
 
 cfg.set({"distributed.scheduler.worker-ttl": None})
 
@@ -46,6 +39,27 @@ app = typer.Typer()
 
 cdo = Cdo(tempdir="./tmp", silent=False)
 os.environ["REMAP_EXTRAPOLATE"] = "off"
+
+
+def clean_fillvalue_attrs(ds: xr.Dataset) -> xr.Dataset:
+    """
+    For each variable in the dataset, check if both '_FillValue' and 'missing_value'
+    are set. If so, remove '_FillValue' from both attrs and encoding.
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        Input xarray dataset.
+
+    Returns
+    -------
+    xr.Dataset
+        Dataset with cleaned attributes.
+    """
+    for var in ds.variables:
+        ds[var].attrs.pop("missing_value", None)
+        ds[var].encoding.pop("missing_value", None)
+    return ds
 
 
 def _to_zip(input, output):
@@ -132,6 +146,7 @@ def _write_to_zarr_ds(input: tuple[xr.Dataset, dict], output: str):
     ds, region = input
     ds.load(scheduler="synchronous")
     logger.info(f"Worker {worker.address} Writing region: {region} to {output}")
+    ds = clean_fillvalue_attrs(ds)
     ds.to_zarr(output, region=region)
     ds.close()
     del ds
@@ -175,7 +190,7 @@ def write_to_zarr_ds(
 
     # multiprocessing.set_start_method("fork", force=True)
     store = zarr.DirectoryStore(output)
-
+    ds = clean_fillvalue_attrs(ds)
     ds.to_zarr(store, mode="w", compute=False)
     cpu_count = max(psutil.cpu_count(logical=False) // 2, 1)
     if nworkers is None:
@@ -230,6 +245,7 @@ def write_to_zarr(
         chunks={"lat": 10, "lon": 10},
     )
 
+    ds = clean_fillvalue_attrs(ds)
     if len(coord) == 1:
         ds.to_zarr(store, mode="w")
     else:
@@ -300,6 +316,7 @@ def write_to_nc(
         concat_dim=dimname,
     )
     ds = ds.assign_coords({dimname: coord})
+    ds = clean_fillvalue_attrs(ds)
     ds.to_netcdf(output)
     logger.info(f"{output} created")
 
@@ -314,6 +331,7 @@ def _write_to_zarr(zarr_store, nc_file, idx, dimname):
     # Define the region where this process will write its data
     region = {dimname: slice(idx, idx + 1)}
     # Write the data to the Zarr store
+    ds = clean_fillvalue_attrs(ds)
     ds.to_zarr(zarr_store, region=region)
     # Close the dataset
     ds.close()
@@ -579,7 +597,6 @@ def process_ens_stat_cdo(
     refcst_files: list[str],
     file_type: FileType,
 ):
-
     cdo_inputs = []
     for cdo_opr in ens_stat_oprs.get_cdo_opr(fcst_files):
         cdo_inputs.append(cdo_opr)
@@ -832,6 +849,7 @@ def calc_sot_stats(
     for t in range(fcst_sort.shape[1]):
         var[t, :, :] = func(fcst_sort[:, t, :, :], clim_sort[:, t, :, :])
     var_ds = var.to_dataset()
+    var_ds = clean_fillvalue_attrs(var_ds)
     file_name = create_file_name(vname, time_coarsen_name, ens_stat_name)
     if file_type in [FileType.zarr, FileType.zarr_and_nc]:
         var_ds.to_zarr(f"{file_name}.zarr.zip", mode="w")
@@ -887,6 +905,7 @@ def calc_efi_stats(
     # unravel the result to get the full array
     var[:, :, :] = np.concatenate(result).reshape(fcst.shape[1:])
     var_ds = var.to_dataset()
+    var_ds = clean_fillvalue_attrs(var_ds)
     file_name = create_file_name(vname, time_coarsen_name, ens_stat_name)
     if file_type in [FileType.zarr, FileType.zarr_and_nc]:
         var_ds.to_zarr(f"{file_name}.zarr.zip", mode="w")
