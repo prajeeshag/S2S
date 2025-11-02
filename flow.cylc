@@ -45,11 +45,13 @@
             wrf{{member}} => merge_time{{member}} => acc2rate{{member}}<acc2rate> => submit_acc2rate<acc2rate>
             submit_acc2rate_RAINC & submit_acc2rate_RAINNC => rain{{member}} => submit_rain
             merge_time{{member}} => rh2{{member}} => submit_rh2
+            merge_time{{member}} => windspeed{{member}} => submit_windspeed
 
             #Visualization
             merge_time{{member}} & install7z[^] & installCondaPkgs[^] => viz<vizfld>
             submit_rain => viz_Rainfall
             submit_rh2 => viz_RH2
+            submit_windspeed => viz_WIND10
             viz<vizfld> => create_meta_data => push_data
 # temporary stop            viz<vizfld> => plot_viz_data<vizfld>
 
