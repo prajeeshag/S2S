@@ -16,7 +16,7 @@
     memh = 0..{{ HMEMBERS - 1 }}
     rf = 1..{{ HYEARS }}
     acc2rate = RAINC, RAINNC
-    vizfld = T2, RH2, Rainfall
+    vizfld = T2, RH2, Rainfall, WIND10
 
 [scheduling]
     initial cycle point = {{ initialCyclePoint }}
@@ -286,6 +286,30 @@
             varname=$CYLC_TASK_PARAM_acc2rate
             scripts_dir=submit_acc2rate_${varname}
 
+    [[WINDSPEED]]
+        script = """
+        scriptsdir=$CYCLE_SHARE_DIR/submit_windspeed/
+        mkdir -p $scriptsdir
+        jobscript=$scriptsdir/${CYLC_TASK_NAME}.sh
+	U=$input_dir/surface_d01_U10.nc
+	V=$input_dir/surface_d01_V10.nc
+	WIND=$input_dir/surface_d01_WIND10.nc
+        echo "cdo -setname,WIND10 -sqrt -add -sqr $U -sqr $V $WIND10" > $jobscript
+        chmod +x $jobscript
+        """
+        [[[environment]]]
+            input_dir=$MEM_SHARE_DIR/merge_time
+
+    [[windspeed_F<mem>]]
+        inherit = WINDSPEED, FORECAST_MEMBER
+    [[windspeed<rf><memh>]]
+        inherit = WINDSPEED, REFORECAST_MEMBER
+    
+    [[submit_windspeed]]
+        inherit = None, SUBMIT_BATCH
+        [[[environment]]]
+            scripts_dir=submit_windspeed
+
     [[RH2]]
         script = """
             scriptsdir=$CYCLE_SHARE_DIR/submit_rh2/
@@ -373,6 +397,12 @@
         [[[environment]]]
             fieldname=Rainfall
             input_file_name=surface_d01_RAIN_rate.nc
+
+    [[viz_WIND10]]
+        inherit = None, VIZ
+        [[[environment]]]
+            fieldname=WIND10
+            input_file_name=surface_d01_WIND10.nc
 
     [[create_meta_data]]
         script="""

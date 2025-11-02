@@ -157,6 +157,61 @@ fields:
           ensmean: zarr
           ensprob_ltc: zarr
 
+  WIND10:
+    preprocess:
+      <<: *preprocess_defaults
+      unit_conversion:
+        to_units: m/sec
+
+    stat:
+      - time_aggregation: weekmean
+        ens_stats:
+            #<<: *efi_defaults
+          ensmembers:
+            opr: members
+            #ensmembers_rf:
+              #opr: rfmembers
+          ensmedian:
+            opr: median
+        file_type:
+          ensmedian: nc
+          efi: nc
+          sotn: nc
+          sotp: nc
+          ensmembers: zarr
+          #ensmembers_rf: zarr
+
+      - time_aggregation: null
+        skip_week: false
+        ens_stats:
+          enspctl: *pctl_defaults
+        file_type:
+          enspctl: zarr
+
+      - time_aggregation: daymax
+        skip_week: false
+        ens_stats:
+          <<: *ens_stat_defaults
+          ensprob_gtc: *temp_gtc
+        file_type:
+          ensmedian: zarr
+          ensmin: zarr
+          ensmax: zarr
+          ensmean: zarr
+          ensprob_gtc: zarr
+
+      - time_aggregation: daymin
+        skip_week: false
+        ens_stats:
+          <<: *ens_stat_defaults
+          ensprob_ltc: *temp_ltc
+        file_type:
+          ensmedian: zarr
+          ensmin: zarr
+          ensmax: zarr
+          ensmean: zarr
+          ensprob_ltc: zarr
+
   Rainfall:
     preprocess:
       <<: *preprocess_defaults
